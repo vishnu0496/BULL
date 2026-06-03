@@ -1261,6 +1261,7 @@ async function loadFeedStatus() {
     const r = await fetch(`${API_URL}/feed/status`);
     const res = await r.json();
     const feed = res.feed || {};
+    const intervals = feed.interval_health || {};
     const healthy = String(feed.status || '').includes('HEALTHY');
     const degraded = String(feed.status || '').includes('DEGRADED');
     badge.textContent = feed.status || 'UNKNOWN';
@@ -1271,6 +1272,9 @@ async function loadFeedStatus() {
       <div class="status-line"><span class="status-key">Cost</span><span class="status-value">${feed.cost || 'INR 0'}</span></div>
       <div class="status-line"><span class="status-key">Type</span><span class="status-value">Cached polling</span></div>
       <div class="status-line"><span class="status-key">Healthy</span><span class="status-value">${feed.healthy_symbols || 0}/${feed.checked_symbols || 0}</span></div>
+      <div class="status-line"><span class="status-key">1m sample</span><span class="status-value">${intervals['1m']?.healthy || 0}/${intervals['1m']?.checked || 0}</span></div>
+      <div class="status-line"><span class="status-key">5m sample</span><span class="status-value">${intervals['5m']?.healthy || 0}/${intervals['5m']?.checked || 0}</span></div>
+      <div class="status-line"><span class="status-key">15m sample</span><span class="status-value">${intervals['15m']?.healthy || 0}/${intervals['15m']?.checked || 0}</span></div>
       <div class="status-line"><span class="status-key">Cache</span><span class="status-value">${feed.cache_seconds || 60}s</span></div>
     `;
   } catch (e) {
@@ -1423,6 +1427,26 @@ function renderScanDiagnostics(report = {}, newsReport = {}) {
     <p class="terminal-note">No rejected symbols were returned.</p>
   `;
 
+  const watch = report.top_watch || [];
+  const watchRows = watch.length ? watch.map(item => `
+    <div class="scan-card">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <span style="font-family:var(--mono); font-weight:700; font-size:16px; color:var(--amber);">${String(item.ticker || '').replace('.NS','')}</span>
+        <span class="card-badge amber">WATCH ${Number(item.watch_score || 0).toFixed(0)}</span>
+      </div>
+      <div style="font-size:12px; color:var(--muted); line-height:1.5;">${item.reason || 'Waiting for cleaner confirmation.'}</div>
+      <div style="font-family:var(--mono); font-size:12px; color:var(--muted); display:flex; flex-direction:column; gap:4px;">
+        <div>Last Price: <span style="color:var(--text)">₹${Number(item.price || 0).toFixed(2)}</span></div>
+        <div>RVOL: <span style="color:var(--text)">${Number(item.rvol || 0).toFixed(2)}x</span></div>
+        <div>RSI: <span style="color:var(--text)">${Number(item.rsi || 0).toFixed(1)}</span></div>
+        <div>ML Confidence: <span style="color:var(--text)">${(Number(item.ml_score || 0) * 100).toFixed(0)}%</span></div>
+      </div>
+      <button disabled class="filter-btn active" style="margin-top:4px; padding:8px 0; border-radius:6px; font-weight:700; width:100%; border-color:var(--amber); color:var(--amber); background:var(--amber-dim); cursor:not-allowed;">
+        WATCH ONLY - NOT A TRADE
+      </button>
+    </div>
+  `).join('') : '<p class="terminal-note">No useful watch candidates today. That usually means data quality or market participation is too weak.</p>';
+
   const newsCounts = newsReport.counts || {};
   const modeText = report.mode === 'SIMULATED_MARKET_TIME'
     ? `Outside live market hours. Simulated scan time: ${report.scan_time || '--:--'}`
@@ -1460,6 +1484,10 @@ function renderScanDiagnostics(report = {}, newsReport = {}) {
             <div class="status-line"><span class="status-key">Fresh rule</span><span class="status-value">Recent headlines only</span></div>
           </div>
         </div>
+      </div>
+      <div class="card full" style="margin-top:16px;">
+        <div class="card-header"><span class="card-title">Top 3 Watch Only</span><span class="card-badge amber">No Entry Yet</span></div>
+        <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:16px;">${watchRows}</div>
       </div>
       <div class="card full" style="margin-top:16px;">
         <div class="card-header"><span class="card-title">Rejected Symbol Examples</span><span class="card-badge blue">Why It Waited</span></div>

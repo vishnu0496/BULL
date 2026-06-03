@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 import time
 from typing import Dict, Iterable, Optional, Tuple
 
@@ -21,6 +21,29 @@ class BullFreeMarketFeed:
         self.last_errors: Dict[str, str] = {}
         self.request_count = 0
         self.cache_hits = 0
+
+    @staticmethod
+    def _timestamp_text(timestamp) -> str:
+        if hasattr(timestamp, "to_pydatetime"):
+            timestamp = timestamp.to_pydatetime()
+        if isinstance(timestamp, datetime):
+            return timestamp.isoformat()
+        return str(timestamp)
+
+    @staticmethod
+    def _bar_age_minutes(timestamp) -> Optional[float]:
+        try:
+            if hasattr(timestamp, "to_pydatetime"):
+                timestamp = timestamp.to_pydatetime()
+            if not isinstance(timestamp, datetime):
+                return None
+            if timestamp.tzinfo is None:
+                now = datetime.now()
+            else:
+                now = datetime.now(timezone.utc).astimezone(timestamp.tzinfo)
+            return max(0.0, (now - timestamp).total_seconds() / 60)
+        except Exception:
+            return None
 
     @staticmethod
     def _normalize_frame(df: pd.DataFrame) -> pd.DataFrame:
@@ -71,8 +94,6 @@ class BullFreeMarketFeed:
 
         latest = bars.iloc[-1]
         timestamp = bars.index[-1]
-        if hasattr(timestamp, "to_pydatetime"):
-            timestamp = timestamp.to_pydatetime()
         return {
             "ticker": ticker,
             "status": "OK",
@@ -81,7 +102,8 @@ class BullFreeMarketFeed:
             "high": float(latest["High"]),
             "low": float(latest["Low"]),
             "volume": int(latest.get("Volume", 0)),
-            "timestamp": timestamp.isoformat() if isinstance(timestamp, datetime) else str(timestamp),
+            "timestamp": self._timestamp_text(timestamp),
+            "age_minutes": self._bar_age_minutes(timestamp),
             "source": "yfinance",
             "cost": "INR 0",
         }
@@ -91,20 +113,33 @@ class BullFreeMarketFeed:
         checked = []
         ok = 0
         stale_or_missing = 0
+        interval_health = {"1m": 0, "5m": 0, "15m": 0}
+        sample_symbols = symbols[:12]
+        for interval in interval_health:
+            for ticker in sample_symbols:
+                period = "1d" if interval == "1m" else "5d"
+                if not self.get_bars(ticker, period=period, interval=interval).empty:
+                    interval_health[interval] += 1
+
         for ticker in symbols:
             bars = self.get_bars(ticker, period="5d", interval="15m")
+            latest = bars.index[-1] if not bars.empty else None
+            age_minutes = self._bar_age_minutes(latest) if latest is not None else None
             status = "OK" if not bars.empty else "NO_DATA"
+            if status == "OK" and age_minutes is not None and age_minutes > 24 * 60:
+                status = "STALE"
+
             if status == "OK":
                 ok += 1
-                latest = bars.index[-1]
-                latest_text = latest.isoformat() if hasattr(latest, "isoformat") else str(latest)
+                latest_text = self._timestamp_text(latest)
             else:
                 stale_or_missing += 1
-                latest_text = None
+                latest_text = self._timestamp_text(latest) if latest is not None else None
             checked.append({
                 "ticker": ticker,
                 "status": status,
                 "latest_bar": latest_text,
+                "age_minutes": round(age_minutes, 1) if age_minutes is not None else None,
                 "error": self.last_errors.get(ticker),
             })
 
@@ -127,6 +162,13 @@ class BullFreeMarketFeed:
             "checked_symbols": len(symbols),
             "healthy_symbols": ok,
             "missing_symbols": stale_or_missing,
+            "interval_health": {
+                key: {
+                    "healthy": value,
+                    "checked": len(sample_symbols),
+                }
+                for key, value in interval_health.items()
+            },
             "request_count": self.request_count,
             "cache_hits": self.cache_hits,
             "limitations": [
