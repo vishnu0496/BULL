@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="BULL Research — Premium local stock analysis dashboard with AI-powered daily stock recommendations, backtesting, and paper trading.">
+    <title>BULL Research Desk</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📈</text></svg>">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/styles.css?v=perf-1">
+</head>
+<body>
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <div class="logo-mark">
+                <span class="logo-icon">📈</span>
+                <h1 class="logo-text">BULL</h1>
+            </div>
+            <p class="logo-subtitle">Research Desk</p>
+        </div>
+
+        <nav class="sidebar-nav" id="sidebarNav">
+            <a href="#mentor" class="nav-item active" data-page="mentor">
+                <span class="nav-icon">🎓</span>
+                <span class="nav-label">Daily Mentor</span>
+                <span class="nav-badge pulse-dot" id="mentorBadge"></span>
+            </a>
+            <a href="#research" class="nav-item" data-page="research">
+                <span class="nav-icon">📊</span>
+                <span class="nav-label">Research Desk</span>
+            </a>
+            <a href="#analyst" class="nav-item" data-page="analyst">
+                <span class="nav-icon">NA</span>
+                <span class="nav-label">News Analyst</span>
+            </a>
+
+            <div class="nav-divider"></div>
+
+            <a href="#journal" class="nav-item" data-page="journal">
+                <span class="nav-icon">📖</span>
+                <span class="nav-label">Paper Journal</span>
+            </a>
+            <a href="#backtest" class="nav-item" data-page="backtest">
+                <span class="nav-icon">🧪</span>
+                <span class="nav-label">Backtest Lab</span>
+            </a>
+            <a href="#ranking" class="nav-item" data-page="ranking">
+                <span class="nav-icon">🏆</span>
+                <span class="nav-label">Strategy Ranking</span>
+            </a>
+
+            <div class="nav-divider"></div>
+
+            <a href="#school" class="nav-item" data-page="school">
+                <span class="nav-icon">📚</span>
+                <span class="nav-label">Market School</span>
+            </a>
+            <a href="#fno" class="nav-item" data-page="fno">
+                <span class="nav-icon">🎫</span>
+                <span class="nav-label">F&O Desk</span>
+            </a>
+
+            <div class="nav-divider"></div>
+
+            <a href="#settings" class="nav-item" data-page="settings">
+                <span class="nav-icon">⚙️</span>
+                <span class="nav-label">Settings</span>
+            </a>
+            <a href="#health" class="nav-item" data-page="health">
+                <span class="nav-icon">🔍</span>
+                <span class="nav-label">Data Health</span>
+            </a>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="market-status" id="marketStatus">
+                <span class="status-dot offline"></span>
+                <span class="status-text">Market Closed</span>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <header class="macro-ticker-bar" id="macroTickerBar">
+        <div class="macro-ticker-item">
+            <span class="macro-ticker-label">Brent Crude</span>
+            <span class="macro-ticker-value" id="macroCrude">₹...</span>
+        </div>
+        <div class="macro-ticker-item">
+            <span class="macro-ticker-label">USD/INR</span>
+            <span class="macro-ticker-value" id="macroUsdInr">₹...</span>
+        </div>
+        <div class="macro-ticker-item">
+            <span class="macro-ticker-label">US 10Y Bond Yield</span>
+            <span class="macro-ticker-value" id="macroUs10y">...%</span>
+        </div>
+        <div class="macro-ticker-item" style="border-right: none;">
+            <span class="macro-ticker-label">Geopolitical Risk</span>
+            <span class="macro-ticker-value" id="macroRisk">Monitoring...</span>
+        </div>
+    </header>
+
+    <main class="main-content" id="mainContent">
+        <!-- Page content injected here by JS -->
+        <div class="page-loading" id="pageLoading">
+            <div class="skeleton-header"></div>
+            <div class="skeleton-grid">
+                <div class="skeleton-card"></div>
+                <div class="skeleton-card"></div>
+                <div class="skeleton-card"></div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Scripts -->
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="/js/app.js?v=perf-1"></script>
+    <script src="/js/pages/mentor.js"></script>
+    <script src="/js/pages/analyst.js?v=analyst-1"></script>
+    <script src="/js/pages/research.js"></script>
+    <script src="/js/pages/journal.js"></script>
+    <script src="/js/pages/backtest.js?v=chart-fix-1"></script>
+    <script src="/js/pages/ranking.js"></script>
+    <script src="/js/pages/school.js"></script>
+    <script src="/js/pages/fno.js"></script>
+    <script src="/js/pages/settings.js"></script>
+    <script src="/js/pages/health.js?v=health-fix-1"></script>
+</body>
+</html>

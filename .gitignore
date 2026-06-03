@@ -1,0 +1,34 @@
+# Python virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Local secrets
+.env
+.env.*
+
+# Databases and local market data
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# Logs and scratch work
+logs/
+scratch/
+
+# Generated model artifacts
+models/
+*.joblib
+*.pth
+
+# App/runtime caches
+.streamlit/
+.ruff_cache/
