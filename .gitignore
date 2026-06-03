@@ -23,6 +23,8 @@ data/
 # Logs and scratch work
 logs/
 scratch/
+trades_journal.json
+signals_log.json
 
 # Generated model artifacts
 models/

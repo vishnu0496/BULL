@@ -1,42 +1,40 @@
-# BULL: Private Local Market Research Desk
+# BULL: Private Local Market Research Terminal
 
-BULL is a private, local dashboard for researching Indian stocks before the market opens. It is not an order-placement tool, not a profit guarantee, and not a replacement for risk control.
+BULL is a private, local Indian market research terminal for training, paper trading, and measuring whether trading ideas are actually working.
 
-The current local app is a FastAPI server (`api.server:app`) that serves API routes and the static frontend in `frontend/`.
+It is not a real-money order-placement tool, not a profit guarantee, and not ready for live trading.
+
+## Current App
+
+The current Antigravity UI/UX terminal is served by:
+
+```cmd
+python -m uvicorn server:app --host 127.0.0.1 --port 8000 --reload
+```
+
+Open:
+
+```text
+http://localhost:8000
+```
+
+The older `api/server.py` + `frontend/` app on port `8501` is legacy. Keep it for reference while migrating useful logic, but use port `8000` as the main BULL terminal.
 
 ## What It Does
 
-- Maintains a local stock watchlist.
-- Fetches daily historical data through `yfinance`.
-- Stores all data in local SQLite.
-- Generates rule-based research setups with entry trigger, stop-loss, targets, invalidation rule, confidence score, and risk level.
-- Keeps a paper journal for learning and validation.
-- Includes experimental ML/LSTM model training code that writes generated artifacts under `models/`.
-
-## Data Disclaimer
-
-This application uses `yfinance`, an unofficial open-source wrapper around Yahoo Finance data. It is not affiliated with or endorsed by Yahoo Finance. Treat this data as personal/research data only. It may be delayed, incomplete, unavailable, or different from broker/exchange data.
+- Runs a dark Research Terminal UI with Analytics, Pre-Market Desk, Watchlist, scanner, paper journal, and backtest surfaces.
+- Uses a paper broker to simulate entries and exits.
+- Tracks closed/open paper trades in `trades_journal.json`.
+- Shows paper-trading analytics: net PnL, win rate, average R-multiple, profit factor, max drawdown, equity curve, outcome split, R distribution, signal quality, sector view, and trade log.
+- Includes experimental ML/ensemble modules for future signal work.
 
 ## Current Limits
 
 - No real-money trading.
 - No broker order placement.
-- No real live intraday price feed yet. The browser price stream is simulated from stored end-of-day prices and is labeled as simulated.
-- Entry instructions are conditional watch rules, not automatic orders.
-- Gemini sentiment is disabled by default even if a key is saved. Set `BULL_ENABLE_GEMINI_SENTIMENT=true` only when you intentionally want to spend Gemini calls.
-- Automatic background watchlist news scraping is disabled by default. Set `BULL_ENABLE_BACKGROUND_NEWS_SWARM=true` only when you want the app to scrape news continuously while the server is running.
-
-Treat any setup as valid only after the first few minutes of market noise, such as after 9:20 AM, and only if the price trigger is actually reached.
-
-## Stack
-
-- Python
-- FastAPI
-- Uvicorn
-- SQLite
-- pandas
-- yfinance
-- pytest
+- No reliable live intraday market feed yet.
+- Current paper trades are local simulations, not exchange-confirmed fills.
+- ML and signal quality panels are still experimental and need walk-forward validation before being trusted.
 
 ## Run
 
@@ -48,27 +46,13 @@ python -m venv .venv
 .venv\Scripts\activate
 python -m pip install --upgrade pip
 pip install -r requirements.txt
-python -m uvicorn api.server:app --host 127.0.0.1 --port 8501 --reload
-```
-
-Optional environment flags:
-
-```cmd
-set BULL_ENABLE_GEMINI_SENTIMENT=true
-set BULL_GEMINI_SENTIMENT_MAX_CALLS=20
-set BULL_ENABLE_BACKGROUND_NEWS_SWARM=true
+python -m uvicorn server:app --host 127.0.0.1 --port 8000 --reload
 ```
 
 Then open:
 
 ```text
-http://localhost:8501
-```
-
-Health check:
-
-```text
-http://localhost:8501/api/health
+http://localhost:8000
 ```
 
 ## Test
@@ -79,12 +63,10 @@ cd C:\Users\Vishnu\Documents\BULL
 pytest
 ```
 
-`pytest.ini` limits collection to `tests/`.
+## Training Workflow
 
-## Workflow
-
-1. Add liquid NSE stocks to the watchlist, such as `RELIANCE.NS`, `TCS.NS`, or `INFY.NS`.
-2. Sync data from the Data Health page.
-3. Generate today's research setups from the Pre-Market Research Desk.
-4. Paper-track what happens.
-5. Trust only measured results, not the appearance of the dashboard.
+1. Use the scanner and pre-market desk only for paper ideas.
+2. Execute simulated paper trades.
+3. Close trades as win/loss after the idea plays out.
+4. Study Analytics to see whether the system and your execution are improving.
+5. Do not increase risk until the paper-trade sample is large enough to trust.

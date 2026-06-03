@@ -37,7 +37,7 @@ if %ERRORLEVEL% neq 0 (
     exit /b 1
 )
 
-echo [3/3] Launching FastAPI Web Application...
-.venv\Scripts\python -m uvicorn api.server:app --host 127.0.0.1 --port 8501 --reload
+echo [3/3] Launching BULL Research Terminal...
+.venv\Scripts\python -m uvicorn server:app --host 127.0.0.1 --port 8000 --reload
 
 pause
