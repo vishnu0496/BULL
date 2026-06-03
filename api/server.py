@@ -589,7 +589,13 @@ async def get_research_setups(date: Optional[str] = Query(None)):
 async def serve_root():
     index_path = os.path.join(FRONTEND_DIR, "index.html")
     if os.path.isfile(index_path):
-        return FileResponse(index_path)
+        return FileResponse(
+            index_path,
+            headers={
+                "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                "Pragma": "no-cache",
+            },
+        )
     return JSONResponse(
         {"error": "Frontend not found. Place index.html in the frontend/ directory."},
         status_code=404,
