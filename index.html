@@ -460,6 +460,43 @@
     border-color: var(--border2);
   }
 
+  .placeholder-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 16px;
+  }
+  .terminal-note {
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.7;
+  }
+  .status-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .status-line {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .status-line:last-child { border-bottom: none; }
+  .status-key {
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  .status-value {
+    color: var(--text);
+    text-align: right;
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+
   /* ── Animate in ── */
   @keyframes fadeUp {
     from { opacity: 0; transform: translateY(12px); }
@@ -504,21 +541,21 @@
       <div class="nav-section">
         <span class="nav-label">Research</span>
         <button class="nav-item" id="nav-premarket" onclick="switchTab('premarket')"><span class="nav-dot"></span>Pre-Market Desk</button>
-        <a class="nav-item" href="#"><span class="nav-dot"></span>Watchlist</a>
-        <a class="nav-item" href="#"><span class="nav-dot"></span>Sector Leaders</a>
-        <a class="nav-item" href="#"><span class="nav-dot"></span>News Swarm</a>
+        <button class="nav-item" id="nav-watchlist" onclick="switchTab('watchlist')"><span class="nav-dot"></span>Watchlist</button>
+        <button class="nav-item" id="nav-sectors" onclick="switchTab('sectors')"><span class="nav-dot"></span>Sector Leaders</button>
+        <button class="nav-item" id="nav-news" onclick="switchTab('news')"><span class="nav-dot"></span>News Swarm</button>
       </div>
       <div class="nav-section">
         <span class="nav-label">Journal</span>
         <button class="nav-item active" id="nav-analytics" onclick="switchTab('analytics')"><span class="nav-dot"></span>Analytics</button>
-        <a class="nav-item" href="#"><span class="nav-dot"></span>Trade Log</a>
-        <a class="nav-item" href="#"><span class="nav-dot"></span>Backtest</a>
+        <button class="nav-item" id="nav-tradelog" onclick="switchTab('tradelog')"><span class="nav-dot"></span>Trade Log</button>
+        <button class="nav-item" id="nav-backtest" onclick="switchTab('backtest')"><span class="nav-dot"></span>Backtest</button>
       </div>
       <div class="nav-section">
         <span class="nav-label">System</span>
-        <a class="nav-item" href="#"><span class="nav-dot"></span>Data Health</a>
-        <a class="nav-item" href="#"><span class="nav-dot"></span>ML Models</a>
-        <a class="nav-item" href="#"><span class="nav-dot"></span>Settings</a>
+        <button class="nav-item" id="nav-health" onclick="switchTab('health')"><span class="nav-dot"></span>Data Health</button>
+        <button class="nav-item" id="nav-models" onclick="switchTab('models')"><span class="nav-dot"></span>ML Models</button>
+        <button class="nav-item" id="nav-settings" onclick="switchTab('settings')"><span class="nav-dot"></span>Settings</button>
       </div>
     </nav>
 
@@ -759,6 +796,124 @@
       </div>
     </div>
 
+    <div class="content tab-content" id="tab-watchlist" style="display: none;">
+      <div class="placeholder-grid">
+        <div class="card">
+          <div class="card-header"><span class="card-title">Watchlist</span><span class="card-badge blue" id="watchlist-count">Local</span></div>
+          <p class="terminal-note">This terminal currently scans a fixed high-liquidity NSE universe from the local engine. The next useful upgrade is editable watchlist management inside this page.</p>
+        </div>
+        <div class="card">
+          <div class="card-header"><span class="card-title">Tracked Universe</span><span class="card-badge green">Scanner Input</span></div>
+          <div class="status-list" id="watchlist-preview"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="content tab-content" id="tab-sectors" style="display: none;">
+      <div class="card full">
+        <div class="card-header"><span class="card-title">Sector Leaders</span><span class="card-badge amber">Overlay</span></div>
+        <p class="terminal-note" style="margin-bottom:16px;">Sector rotation is not fully connected yet. For now this page shows the current analytics sector panel so we can keep the UI honest while we build the real relative-strength overlay.</p>
+        <div class="sector-grid" id="sectorGridPage"></div>
+      </div>
+    </div>
+
+    <div class="content tab-content" id="tab-news" style="display: none;">
+      <div class="placeholder-grid">
+        <div class="card">
+          <div class="card-header"><span class="card-title">News Swarm</span><span class="card-badge amber">Not Auto-Running</span></div>
+          <p class="terminal-note">News is not yet a full analyst in this terminal. It should become an event classifier that reads headlines, separates noise from material events, and blocks trades when risk headlines are strong.</p>
+        </div>
+        <div class="card">
+          <div class="card-header"><span class="card-title">Next Upgrade</span><span class="card-badge blue">Free First</span></div>
+          <div class="status-list">
+            <div class="status-line"><span class="status-key">Source</span><span class="status-value">Google/Yahoo headlines</span></div>
+            <div class="status-line"><span class="status-key">Cost</span><span class="status-value">₹0 local rules</span></div>
+            <div class="status-line"><span class="status-key">Role</span><span class="status-value">Risk filter, not trade trigger</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="content tab-content" id="tab-tradelog" style="display: none;">
+      <div class="card full">
+        <div class="card-header"><span class="card-title">Trade Log</span><span class="card-badge blue">Paper Broker</span></div>
+        <div class="table-scroll">
+          <table class="trade-table">
+            <thead>
+              <tr>
+                <th>Ticker</th><th>Entry Date</th><th>Entry ₹</th><th>Exit ₹</th><th>P&L ₹</th><th>R</th><th>ML Score</th><th>Outcome</th><th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="tradeLogBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="content tab-content" id="tab-backtest" style="display: none;">
+      <div class="placeholder-grid">
+        <div class="card">
+          <div class="card-header"><span class="card-title">Backtest</span><span class="card-badge amber">Needs Walk-Forward</span></div>
+          <p class="terminal-note">The current terminal has a scanner simulation and paper analytics. The next serious backtest upgrade should be walk-forward validation, not a prettier chart.</p>
+        </div>
+        <div class="card">
+          <div class="card-header"><span class="card-title">Validation Rules</span><span class="card-badge green">Required</span></div>
+          <div class="status-list">
+            <div class="status-line"><span class="status-key">Train</span><span class="status-value">Past window only</span></div>
+            <div class="status-line"><span class="status-key">Test</span><span class="status-value">Future month</span></div>
+            <div class="status-line"><span class="status-key">Ban</span><span class="status-value">Lookahead leakage</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="content tab-content" id="tab-health" style="display: none;">
+      <div class="placeholder-grid">
+        <div class="card">
+          <div class="card-header"><span class="card-title">Data Health</span><span class="card-badge green">Live</span></div>
+          <div class="status-list" id="health-status"></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><span class="card-title">Runtime</span><span class="card-badge blue">localhost:8000</span></div>
+          <p class="terminal-note">Only the Antigravity Research Terminal should be running for daily use. The old port 8501 app is legacy and should stay closed unless we are migrating code from it.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="content tab-content" id="tab-models" style="display: none;">
+      <div class="placeholder-grid">
+        <div class="card">
+          <div class="card-header"><span class="card-title">ML Models</span><span class="card-badge amber">Experimental</span></div>
+          <p class="terminal-note">ML scores are useful only after walk-forward validation proves they beat simple rules. Until then, treat model confidence as a research input, not a decision command.</p>
+        </div>
+        <div class="card">
+          <div class="card-header"><span class="card-title">Model Stack</span><span class="card-badge blue">Local</span></div>
+          <div class="status-list">
+            <div class="status-line"><span class="status-key">XGBoost</span><span class="status-value">Feature model</span></div>
+            <div class="status-line"><span class="status-key">Random Forest</span><span class="status-value">Ensemble partner</span></div>
+            <div class="status-line"><span class="status-key">Next</span><span class="status-value">Walk-forward report</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="content tab-content" id="tab-settings" style="display: none;">
+      <div class="placeholder-grid">
+        <div class="card">
+          <div class="card-header"><span class="card-title">Settings</span><span class="card-badge green">Bootstrap Mode</span></div>
+          <div class="status-list">
+            <div class="status-line"><span class="status-key">Mode</span><span class="status-value">Paper trading</span></div>
+            <div class="status-line"><span class="status-key">Real orders</span><span class="status-value">Disabled</span></div>
+            <div class="status-line"><span class="status-key">Paid APIs</span><span class="status-value">Avoid for now</span></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><span class="card-title">Capital Rule</span><span class="card-badge amber">Safety</span></div>
+          <p class="terminal-note">Before real money, BULL must show consistent paper-trade performance and clean execution discipline. This is the control room, not a casino button.</p>
+        </div>
+      </div>
+    </div>
+
   </main>
 </div>
 
@@ -786,16 +941,51 @@ const GATES = [
 /* ─── Chart instances ─── */
 let equityChart = null, donutChart = null, monthlyChart = null;
 let ALL_TRADES = [];
+const PAGE_TITLES = {
+  analytics: 'Analytics',
+  premarket: 'Pre-Market Desk',
+  watchlist: 'Watchlist',
+  sectors: 'Sector Leaders',
+  news: 'News Swarm',
+  tradelog: 'Trade Log',
+  backtest: 'Backtest',
+  health: 'Data Health',
+  models: 'ML Models',
+  settings: 'Settings',
+};
 
 /* ─── Tab Switcher ─── */
 function switchTab(tabId) {
+  const target = document.getElementById('tab-' + tabId);
+  const navTarget = document.getElementById('nav-' + tabId);
+  if (!target || !navTarget) {
+    console.warn(`Unknown BULL terminal tab: ${tabId}`);
+    return;
+  }
+
   document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
-  document.getElementById('tab-' + tabId).style.display = 'block';
+  target.style.display = 'block';
   
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-  document.getElementById('nav-' + tabId).classList.add('active');
+  navTarget.classList.add('active');
   
-  document.getElementById('page-heading').textContent = '// ' + (tabId === 'analytics' ? 'Analytics' : 'Pre-Market Desk');
+  document.getElementById('page-heading').textContent = '// ' + (PAGE_TITLES[tabId] || tabId);
+  if (window.location.hash !== `#${tabId}`) {
+    window.history.replaceState(null, '', `#${tabId}`);
+  }
+
+  if (tabId === 'tradelog') {
+    buildTradeTable(ALL_TRADES, 'tradeLogBody');
+  }
+  if (tabId === 'watchlist') {
+    renderWatchlistPreview();
+  }
+  if (tabId === 'sectors') {
+    renderSectorGrid(ALL_TRADES.filter(t => t.status === 'CLOSED'), 'sectorGridPage');
+  }
+  if (tabId === 'health') {
+    renderHealthStatus();
+  }
 }
 
 /* ─── Core Integration Functions ─── */
@@ -885,8 +1075,9 @@ function loadOfflineFallback() {
 
 /* ─── Table Builders ─── */
 
-function buildTradeTable(trades) {
-  const body = document.getElementById('tradeBody');
+function buildTradeTable(trades, targetId = 'tradeBody') {
+  const body = document.getElementById(targetId);
+  if (!body) return;
   body.innerHTML = "";
   
   if(trades.length === 0) {
@@ -968,7 +1159,7 @@ function buildGates() {
   `).join('');
 }
 
-function renderSectorGrid(closedTrades) {
+function renderSectorGrid(closedTrades, targetId = 'sectorGrid') {
   const defaultSectors = [
     { name:'Banking', wr:68 }, { name:'IT', wr:72 },
     { name:'Energy', wr:54 }, { name:'Pharma', wr:61 },
@@ -976,7 +1167,8 @@ function renderSectorGrid(closedTrades) {
     { name:'Infra', wr:47 }, { name:'Metal', wr:62 },
   ];
   
-  const el = document.getElementById('sectorGrid');
+  const el = document.getElementById(targetId);
+  if (!el) return;
   el.innerHTML = defaultSectors.map(s => {
     const color = s.wr >= 70 ? '#10b981' : s.wr >= 60 ? '#f59e0b' : '#ef4444';
     const bg    = s.wr >= 70 ? 'rgba(16,185,129,0.08)' : s.wr >= 60 ? 'rgba(245,158,11,0.08)' : 'rgba(239,68,68,0.08)';
@@ -987,6 +1179,31 @@ function renderSectorGrid(closedTrades) {
       </div>
     `;
   }).join('');
+}
+
+function renderWatchlistPreview() {
+  const el = document.getElementById('watchlist-preview');
+  if (!el) return;
+  const symbols = ['RELIANCE.NS', 'INFY.NS', 'HDFCBANK.NS', 'TCS.NS', 'SBIN.NS', 'AXISBANK.NS', 'POWERGRID.NS'];
+  el.innerHTML = symbols.map((ticker, idx) => `
+    <div class="status-line">
+      <span class="status-key">${idx + 1}. ${ticker.replace('.NS', '')}</span>
+      <span class="status-value">scanner universe</span>
+    </div>
+  `).join('');
+}
+
+function renderHealthStatus() {
+  const el = document.getElementById('health-status');
+  if (!el) return;
+  const closed = ALL_TRADES.filter(t => t.status === 'CLOSED').length;
+  const open = ALL_TRADES.filter(t => t.status === 'OPEN').length;
+  el.innerHTML = `
+    <div class="status-line"><span class="status-key">API</span><span class="status-value">online</span></div>
+    <div class="status-line"><span class="status-key">Port</span><span class="status-value">8000</span></div>
+    <div class="status-line"><span class="status-key">Trades</span><span class="status-value">${ALL_TRADES.length}</span></div>
+    <div class="status-line"><span class="status-key">Closed/Open</span><span class="status-value">${closed}/${open}</span></div>
+  `;
 }
 
 function renderRDist(closedTrades) {
@@ -1242,7 +1459,7 @@ async function closeAllOpenTrades() {
 document.getElementById('periodFilter').addEventListener('click', (e) => {
   const btn = e.target.closest('[data-period]');
   if (!btn) return;
-  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('#periodFilter .filter-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   fetchTelemetry();
 });
@@ -1250,7 +1467,14 @@ document.getElementById('periodFilter').addEventListener('click', (e) => {
 /* ─── Initialization ─── */
 buildSignalQuality();
 buildGates();
-fetchTelemetry();
+fetchTelemetry().then(() => {
+  const initialTab = (window.location.hash || '#analytics').replace('#', '');
+  switchTab(PAGE_TITLES[initialTab] ? initialTab : 'analytics');
+});
+window.addEventListener('hashchange', () => {
+  const nextTab = (window.location.hash || '#analytics').replace('#', '');
+  switchTab(PAGE_TITLES[nextTab] ? nextTab : 'analytics');
+});
 </script>
 </body>
 </html>
