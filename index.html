@@ -496,6 +496,39 @@
     font-family: var(--mono);
     font-size: 12px;
   }
+  .news-event {
+    padding: 12px;
+    border-radius: 8px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    margin-bottom: 10px;
+  }
+  .news-event-title {
+    color: var(--text);
+    font-size: 13px;
+    line-height: 1.5;
+    margin-bottom: 8px;
+  }
+  .news-event-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 10px;
+    text-transform: uppercase;
+  }
+  .news-gate {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 4px;
+    letter-spacing: 1px;
+  }
+  .news-gate.pass { background: var(--green-dim); color: var(--green); }
+  .news-gate.caution { background: var(--amber-dim); color: var(--amber); }
+  .news-gate.blocked { background: var(--red-dim); color: var(--red); }
 
   /* ── Animate in ── */
   @keyframes fadeUp {
@@ -820,17 +853,22 @@
     <div class="content tab-content" id="tab-news" style="display: none;">
       <div class="placeholder-grid">
         <div class="card">
-          <div class="card-header"><span class="card-title">News Swarm</span><span class="card-badge amber">Not Auto-Running</span></div>
-          <p class="terminal-note">News is not yet a full analyst in this terminal. It should become an event classifier that reads headlines, separates noise from material events, and blocks trades when risk headlines are strong.</p>
+          <div class="card-header"><span class="card-title">News Swarm</span><span class="card-badge blue" id="news-command">Loading</span></div>
+          <p class="terminal-note" id="news-reason">Checking free cached news sources and local event rules.</p>
+          <button onclick="loadNewsSwarm(true)" class="filter-btn active" style="margin-top:14px;">Refresh News Risk</button>
         </div>
         <div class="card">
-          <div class="card-header"><span class="card-title">Next Upgrade</span><span class="card-badge blue">Free First</span></div>
-          <div class="status-list">
-            <div class="status-line"><span class="status-key">Source</span><span class="status-value">Google/Yahoo headlines</span></div>
-            <div class="status-line"><span class="status-key">Cost</span><span class="status-value">₹0 local rules</span></div>
-            <div class="status-line"><span class="status-key">Role</span><span class="status-value">Risk filter, not trade trigger</span></div>
-          </div>
+          <div class="card-header"><span class="card-title">News Counts</span><span class="card-badge green">Free First</span></div>
+          <div class="status-list" id="news-counts"></div>
         </div>
+      </div>
+      <div class="card full" style="margin-top:16px;">
+        <div class="card-header"><span class="card-title">Tracked Stock News Verdicts</span><span class="card-badge amber">Risk Filter</span></div>
+        <div id="news-stock-list"></div>
+      </div>
+      <div class="card full" style="margin-top:16px;">
+        <div class="card-header"><span class="card-title">Highest Materiality Events</span><span class="card-badge blue">Headlines</span></div>
+        <div id="news-events"></div>
       </div>
     </div>
 
@@ -985,6 +1023,9 @@ function switchTab(tabId) {
   }
   if (tabId === 'health') {
     renderHealthStatus();
+  }
+  if (tabId === 'news') {
+    loadNewsSwarm(false);
   }
 }
 
@@ -1206,6 +1247,82 @@ function renderHealthStatus() {
   `;
 }
 
+function newsGateClass(gateOrVerdict) {
+  const value = String(gateOrVerdict || '').toUpperCase();
+  if (value === 'BLOCKED' || value === 'NEWS_RISK') return 'blocked';
+  if (value === 'CAUTION' || value === 'EVENT_CAUTION') return 'caution';
+  return 'pass';
+}
+
+function newsGateText(report) {
+  const verdict = String(report?.verdict || report?.news_verdict || 'NO_NEWS').toUpperCase();
+  if (verdict === 'NEWS_RISK') return 'BLOCKED';
+  if (verdict === 'EVENT_CAUTION') return 'CAUTION';
+  if (verdict === 'NEWS_SUPPORTIVE') return 'SUPPORTIVE';
+  if (verdict === 'FETCH_ERROR') return 'FETCH ERROR';
+  return 'NEUTRAL';
+}
+
+function renderNewsReport(report) {
+  const commandEl = document.getElementById('news-command');
+  const reasonEl = document.getElementById('news-reason');
+  const countsEl = document.getElementById('news-counts');
+  const listEl = document.getElementById('news-stock-list');
+  const eventsEl = document.getElementById('news-events');
+  if (!commandEl || !reasonEl || !countsEl || !listEl || !eventsEl) return;
+
+  commandEl.textContent = report.desk_command || 'NEWS_UNKNOWN';
+  commandEl.className = `card-badge ${report.desk_command === 'CAUTION' ? 'amber' : 'green'}`;
+  reasonEl.textContent = `${report.desk_reason || 'No news reason available.'} Updated ${report.generated_at || ''}.`;
+
+  const counts = report.counts || {};
+  countsEl.innerHTML = `
+    <div class="status-line"><span class="status-key">Tracked</span><span class="status-value">${counts.tracked || 0}</span></div>
+    <div class="status-line"><span class="status-key">Risky</span><span class="status-value">${counts.risky || 0}</span></div>
+    <div class="status-line"><span class="status-key">Supportive</span><span class="status-value">${counts.supportive || 0}</span></div>
+    <div class="status-line"><span class="status-key">Neutral</span><span class="status-value">${counts.neutral || 0}</span></div>
+    <div class="status-line"><span class="status-key">Cost</span><span class="status-value">₹0 local rules</span></div>
+  `;
+
+  const reports = report.stock_reports || [];
+  listEl.innerHTML = reports.length ? reports.map(item => `
+    <div class="status-line">
+      <span class="status-key">${item.ticker?.replace('.NS', '') || 'UNKNOWN'}</span>
+      <span class="status-value">
+        <span class="news-gate ${newsGateClass(item.verdict)}">${newsGateText(item)}</span>
+        &nbsp; score ${Number(item.net_news_score || 0).toFixed(1)} · ${item.news_count || 0} headlines
+      </span>
+    </div>
+  `).join('') : '<p class="terminal-note">No fresh news verdicts returned yet.</p>';
+
+  const events = report.top_events || [];
+  eventsEl.innerHTML = events.length ? events.map(event => `
+    <div class="news-event">
+      <div class="news-event-title">${event.title || 'Untitled headline'}</div>
+      <div class="news-event-meta">
+        <span>${event.ticker || ''}</span>
+        <span>${event.event_type || 'GENERAL'}</span>
+        <span>${event.materiality || 'LOW'} ${event.materiality_score || 0}</span>
+        <span>${event.impact || 'NEUTRAL'}</span>
+      </div>
+    </div>
+  `).join('') : '<p class="terminal-note">No high-materiality headlines found from current free sources.</p>';
+}
+
+async function loadNewsSwarm(forceRefresh = false) {
+  const commandEl = document.getElementById('news-command');
+  if (commandEl) commandEl.textContent = forceRefresh ? 'Refreshing' : 'Loading';
+  try {
+    const r = await fetch(`${API_URL}/news-swarm?force_refresh=${forceRefresh ? 'true' : 'false'}`);
+    const res = await r.json();
+    renderNewsReport(res.report || {});
+  } catch (e) {
+    if (commandEl) commandEl.textContent = 'Offline';
+    const reasonEl = document.getElementById('news-reason');
+    if (reasonEl) reasonEl.textContent = 'News Swarm could not reach the local server.';
+  }
+}
+
 function renderRDist(closedTrades) {
   const defaultBuckets = [
     { label:'< -1R', count: 0, color:'#ef4444' },
@@ -1394,24 +1511,34 @@ async function runDailyScan() {
 
     res.data.forEach(stock => {
       const el = document.createElement("div");
+      const gate = stock.news_gate || 'PASS';
+      const gateClass = newsGateClass(gate);
+      const isBlocked = gate === 'BLOCKED';
+      const newsSummary = stock.news_summary || 'No strong news risk found.';
       el.className = "scan-card";
       el.innerHTML = `
         <div style="display:flex; justify-content:space-between; align-items:center;">
           <span style="font-family:var(--mono); font-weight:700; font-size:16px; color:var(--green);">${stock.ticker.replace('.NS','')}</span>
           <span class="card-badge green">Score: ${(stock.ml_score*100).toFixed(0)}%</span>
         </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+          <span class="news-gate ${gateClass}">NEWS ${gate}</span>
+          <span style="color:var(--muted); font-size:11px; text-align:right;">${Number(stock.news_score || 0).toFixed(1)}</span>
+        </div>
+        <div style="font-size:12px; color:${isBlocked ? 'var(--red)' : 'var(--muted)'}; line-height:1.5;">${newsSummary}</div>
         <div style="font-family:var(--mono); font-size:12px; color:var(--muted); display:flex; flex-direction:column; gap:4px;">
           <div>Trigger Price: <span style="color:var(--text)">₹${stock.price.toFixed(2)}</span></div>
           <div>Relative Volume (RVOL): <span style="color:var(--text)">${stock.rvol.toFixed(1)}x</span></div>
           <div>Relative Strength vs Nifty: <span style="color:var(--text)">${(stock.rel_strength*100).toFixed(2)}%</span></div>
           <div>ATR Volatility (20D): <span style="color:var(--text)">₹${stock.atr.toFixed(2)}</span></div>
         </div>
-        <button onclick="executePaperTrade('${stock.ticker}', ${stock.price}, ${stock.atr}, ${stock.ml_score})" class="filter-btn active" style="margin-top:4px; padding:8px 0; border-radius:6px; font-weight:700; width:100%;">
-          EXECUTE ORDER (1% RISK)
+        <button ${isBlocked ? 'disabled' : ''} onclick="executePaperTrade('${stock.ticker}', ${stock.price}, ${stock.atr}, ${stock.ml_score})" class="filter-btn active" style="margin-top:4px; padding:8px 0; border-radius:6px; font-weight:700; width:100%; ${isBlocked ? 'border-color:var(--red); color:var(--red); background:var(--red-dim); cursor:not-allowed;' : ''}">
+          ${isBlocked ? 'BLOCKED BY NEWS RISK' : 'EXECUTE PAPER ORDER (1% RISK)'}
         </button>
       `;
       container.appendChild(el);
     });
+    if (res.news_report) renderNewsReport(res.news_report);
   } catch(e) {
     container.innerHTML = `<p style="grid-column:1/-1; text-align:center; color:var(--red); padding:40px 0;">Error scanning. Confirm BULL local trading server is running on http://127.0.0.1:8000.</p>`;
     badge.innerText = "Offline connection error";

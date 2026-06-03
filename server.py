@@ -1,10 +1,15 @@
 # server.py
+import time
+
 from fastapi import FastAPI, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 import uvicorn
 from engine import BULLSignalEngine
 from paper_broker import BULLPaperBroker
+from src import database
+from src.news import fetch_stock_news
+from src.news_analyst import summarize_ticker_news
 
 app = FastAPI(title="BULL Stock Terminal Engine")
 
@@ -18,6 +23,93 @@ app.add_middleware(
 
 engine = BULLSignalEngine()
 broker = BULLPaperBroker(initial_capital=100000.0)
+NEWS_CACHE = {"timestamp": 0.0, "report": None}
+NEWS_CACHE_SECONDS = 900
+
+
+def _build_news_report(tickers=None, force_refresh: bool = False):
+    database.init_db()
+    symbols = list(tickers or engine.tickers)
+    now = time.time()
+    if (
+        not force_refresh
+        and tickers is None
+        and NEWS_CACHE["report"] is not None
+        and now - NEWS_CACHE["timestamp"] < NEWS_CACHE_SECONDS
+    ):
+        return NEWS_CACHE["report"]
+
+    stock_reports = []
+    top_events = []
+    for ticker in symbols:
+        try:
+            items = fetch_stock_news(ticker, gemini_api_key=None, force_refresh=force_refresh)
+            report = summarize_ticker_news(ticker, items)
+        except Exception as exc:
+            report = {
+                "ticker": ticker,
+                "news_count": 0,
+                "net_news_score": 0,
+                "verdict": "FETCH_ERROR",
+                "summary": f"News fetch failed: {exc}",
+                "top_events": [],
+            }
+        stock_reports.append(report)
+        top_events.extend(report.get("top_events", []))
+
+    risky = [r for r in stock_reports if r.get("verdict") in {"NEWS_RISK", "EVENT_CAUTION"}]
+    supportive = [r for r in stock_reports if r.get("verdict") == "NEWS_SUPPORTIVE"]
+    neutral = [r for r in stock_reports if r.get("verdict") in {"NEWS_NEUTRAL", "NO_NEWS", "FETCH_ERROR"}]
+
+    if risky:
+        command = "CAUTION"
+        reason = f"{len(risky)} tracked symbols have risky or unclear high-impact news."
+    elif supportive:
+        command = "SELECTIVE_WATCH"
+        reason = f"{len(supportive)} tracked symbols have supportive news. Require technical confirmation."
+    else:
+        command = "NEWS_NEUTRAL"
+        reason = "No strong news edge detected from the free news sources."
+
+    report = {
+        "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "refresh_seconds": NEWS_CACHE_SECONDS,
+        "source_cost": "INR 0 - Google News RSS + yfinance/Yahoo headlines, SQLite cache, local rule-based analysis",
+        "desk_command": command,
+        "desk_reason": reason,
+        "counts": {
+            "tracked": len(stock_reports),
+            "supportive": len(supportive),
+            "risky": len(risky),
+            "neutral": len(neutral),
+        },
+        "supportive_stocks": supportive[:5],
+        "risk_stocks": risky[:5],
+        "top_events": sorted(top_events, key=lambda item: item.get("materiality_score", 0), reverse=True)[:8],
+        "stock_reports": sorted(stock_reports, key=lambda item: item.get("net_news_score", 0), reverse=True),
+    }
+
+    if tickers is None:
+        NEWS_CACHE["timestamp"] = now
+        NEWS_CACHE["report"] = report
+    return report
+
+
+def _apply_news_gate(candidates):
+    if not candidates:
+        return candidates, _build_news_report(tickers=[], force_refresh=False)
+
+    report = _build_news_report(tickers=[c["ticker"] for c in candidates], force_refresh=False)
+    by_ticker = {r["ticker"]: r for r in report.get("stock_reports", [])}
+    for candidate in candidates:
+        news_report = by_ticker.get(candidate["ticker"], {})
+        verdict = news_report.get("verdict", "NO_NEWS")
+        candidate["news_verdict"] = verdict
+        candidate["news_score"] = news_report.get("net_news_score", 0)
+        candidate["news_summary"] = news_report.get("summary", "No fresh news found.")
+        candidate["news_gate"] = "BLOCKED" if verdict == "NEWS_RISK" else "CAUTION" if verdict == "EVENT_CAUTION" else "PASS"
+        candidate["news_events"] = news_report.get("top_events", [])
+    return candidates, report
 
 @app.get("/")
 def serve_dashboard():
@@ -36,9 +128,15 @@ def startup_event():
 @app.get("/api/scan")
 def run_scanner(background_tasks: BackgroundTasks):
     candidates = engine.scan()
+    candidates, news_report = _apply_news_gate(candidates)
     for c in candidates:
         broker.log_engine_signal(c["ticker"], c["price"], c["ml_score"], c["rsi"], c["rvol"])
-    return {"status": "success", "data": candidates}
+    return {"status": "success", "data": candidates, "news_report": news_report}
+
+
+@app.get("/api/news-swarm")
+def get_news_swarm(force_refresh: bool = False):
+    return {"status": "success", "report": _build_news_report(force_refresh=force_refresh)}
 
 @app.post("/api/trade/execute")
 def execute_trade(ticker: str, price: float, atr: float, ml_score: float):

@@ -1,9 +1,64 @@
 import yfinance as yf
 from datetime import datetime
+from email.utils import parsedate_to_datetime
+from typing import Optional
+from urllib.parse import quote_plus
+import xml.etree.ElementTree as ET
+
+import requests
+
 from src.database import get_news_cache, save_news_cache, get_capital_settings
 from src.sentiment import get_text_sentiment
 
 INDEX_SYMBOLS = {"^NSEI", "NIFTY", "^BSESN", "SENSEX"}
+NEWS_MAX_AGE_DAYS = 7
+FUTURE_TOLERANCE_SECONDS = 6 * 60 * 60
+
+
+def _is_recent_news(pub_time: int, now_ts: Optional[int] = None, max_age_days: int = NEWS_MAX_AGE_DAYS) -> bool:
+    now_ts = now_ts or int(datetime.now().timestamp())
+    if pub_time > now_ts + FUTURE_TOLERANCE_SECONDS:
+        return False
+    return now_ts - pub_time <= max_age_days * 24 * 60 * 60
+
+
+def _fetch_google_news_rss(ticker: str) -> list[dict]:
+    """Fetch free Google News RSS headlines for an Indian stock ticker."""
+    symbol = ticker.replace(".NS", "").replace(".BO", "")
+    query = quote_plus(f"{symbol} NSE stock India")
+    url = f"https://news.google.com/rss/search?q={query}&hl=en-IN&gl=IN&ceid=IN:en"
+    try:
+        response = requests.get(
+            url,
+            timeout=8,
+            headers={"User-Agent": "BULL-local-research-dashboard/1.0"},
+        )
+        response.raise_for_status()
+        root = ET.fromstring(response.content)
+    except Exception:
+        return []
+
+    items = []
+    now_ts = int(datetime.now().timestamp())
+    for node in root.findall(".//item")[:10]:
+        title = (node.findtext("title") or "").strip()
+        link = (node.findtext("link") or "").strip()
+        publisher = (node.findtext("source") or "Google News").strip()
+        pub_date = node.findtext("pubDate")
+        try:
+            pub_time = int(parsedate_to_datetime(pub_date).timestamp()) if pub_date else int(datetime.now().timestamp())
+        except Exception:
+            pub_time = int(datetime.now().timestamp())
+
+        if title and _is_recent_news(pub_time, now_ts):
+            items.append({
+                "ticker": ticker,
+                "title": title,
+                "publisher": publisher,
+                "link": link,
+                "pub_time": pub_time,
+            })
+    return items
 
 def fetch_stock_news(ticker: str, gemini_api_key: str = None, force_refresh: bool = False) -> list[dict]:
     """
@@ -33,9 +88,7 @@ def fetch_stock_news(ticker: str, gemini_api_key: str = None, force_refresh: boo
     # Fetch fresh from yfinance
     try:
         t_obj = yf.Ticker(ticker)
-        yf_news = t_obj.news
-        if not yf_news:
-            return []
+        yf_news = t_obj.news or []
             
         news_list = []
         
@@ -54,6 +107,9 @@ def fetch_stock_news(ticker: str, gemini_api_key: str = None, force_refresh: boo
             title = item.get('title', '')
             if not title:
                 continue
+            pub_time = int(item.get('providerPublishTime', int(datetime.now().timestamp())))
+            if not _is_recent_news(pub_time):
+                continue
                 
             # Perform sentiment analysis
             if title in sentiment_cache_map:
@@ -66,10 +122,21 @@ def fetch_stock_news(ticker: str, gemini_api_key: str = None, force_refresh: boo
                 'title': title,
                 'publisher': item.get('publisher', 'Yahoo Finance'),
                 'link': item.get('link', ''),
-                'pub_time': int(item.get('providerPublishTime', int(datetime.now().timestamp()))),
+                'pub_time': pub_time,
                 'sentiment_score': score,
                 'sentiment_label': label
             })
+
+        existing_titles = {item["title"] for item in news_list}
+        for item in _fetch_google_news_rss(ticker):
+            title = item["title"]
+            if title in existing_titles:
+                continue
+            score, label = sentiment_cache_map.get(title, get_text_sentiment(title, gemini_api_key))
+            item["sentiment_score"] = score
+            item["sentiment_label"] = label
+            news_list.append(item)
+            existing_titles.add(title)
             
         # Save to DB cache
         if news_list:
