@@ -41,7 +41,7 @@ from pydantic import BaseModel
 # ---------------------------------------------------------------------------
 # Source module imports — all business logic lives here, NOT in this file.
 # ---------------------------------------------------------------------------
-from src import database, engine, backtest, market, news, fetcher, research, utils, sentiment, news_analyst  # noqa: F401
+from src import database, engine, backtest, market, news, fetcher, research, utils, sentiment, news_analyst, paper_analytics  # noqa: F401
 from src.logger import get_logger
 
 logger = get_logger(__name__)
@@ -493,6 +493,14 @@ async def get_journal():
     try:
         df = await _run_sync(database.get_paper_trades)
         return df.to_dict(orient="records")
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+@app.get("/api/journal/analytics")
+async def journal_analytics():
+    try:
+        return await _run_sync(paper_analytics.get_paper_trade_analytics)
     except Exception as exc:
         return JSONResponse({"error": str(exc)}, status_code=500)
 
