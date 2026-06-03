@@ -1366,6 +1366,76 @@ function renderRDist(closedTrades) {
   `).join('');
 }
 
+function renderScanDiagnostics(report = {}, newsReport = {}) {
+  const counts = report.rejection_counts || {};
+  const countRows = Object.entries(counts).length ? Object.entries(counts).map(([name, count]) => `
+    <div class="status-line">
+      <span class="status-key">${name}</span>
+      <span class="status-value">${count} blocked</span>
+    </div>
+  `).join('') : `
+    <div class="status-line">
+      <span class="status-key">Rules</span>
+      <span class="status-value">No rejection details returned</span>
+    </div>
+  `;
+
+  const examples = report.rejected_examples || [];
+  const exampleRows = examples.length ? examples.map(item => `
+    <div class="status-line">
+      <span class="status-key">${String(item.ticker || '').replace('.NS', '')}</span>
+      <span class="status-value">${item.reason || 'Rejected'}</span>
+    </div>
+  `).join('') : `
+    <p class="terminal-note">No rejected symbols were returned.</p>
+  `;
+
+  const newsCounts = newsReport.counts || {};
+  const modeText = report.mode === 'SIMULATED_MARKET_TIME'
+    ? `Outside live market hours. Simulated scan time: ${report.scan_time || '--:--'}`
+    : `Live scan time: ${report.scan_time || '--:--'}`;
+
+  return `
+    <div class="card full" style="grid-column:1/-1; background:var(--surface2);">
+      <div class="card-header">
+        <span class="card-title">No-Trade Diagnostic</span>
+        <span class="card-badge amber">${report.decision || 'NO_TRADE'}</span>
+      </div>
+      <p class="terminal-note" style="margin-bottom:14px;">
+        ${report.next_action || 'Capital preserved. Re-scan later instead of forcing a trade.'}
+      </p>
+      <div class="placeholder-grid">
+        <div class="card">
+          <div class="card-header"><span class="card-title">Scan Mode</span><span class="card-badge blue">${report.mode || 'UNKNOWN'}</span></div>
+          <div class="status-list">
+            <div class="status-line"><span class="status-key">Symbols checked</span><span class="status-value">${report.total_symbols || 0}</span></div>
+            <div class="status-line"><span class="status-key">Passed</span><span class="status-value">${report.passed || 0}</span></div>
+            <div class="status-line"><span class="status-key">Rejected</span><span class="status-value">${report.rejected || 0}</span></div>
+            <div class="status-line"><span class="status-key">Clock</span><span class="status-value">${modeText}</span></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><span class="card-title">Main Blocking Filters</span><span class="card-badge amber">${report.top_rejection || 'NONE'}</span></div>
+          <div class="status-list">${countRows}</div>
+        </div>
+        <div class="card">
+          <div class="card-header"><span class="card-title">News Gate</span><span class="card-badge ${newsReport.desk_command === 'CAUTION' ? 'amber' : 'green'}">${newsReport.desk_command || 'NEWS_UNKNOWN'}</span></div>
+          <div class="status-list">
+            <div class="status-line"><span class="status-key">Tracked</span><span class="status-value">${newsCounts.tracked || 0}</span></div>
+            <div class="status-line"><span class="status-key">Risky</span><span class="status-value">${newsCounts.risky || 0}</span></div>
+            <div class="status-line"><span class="status-key">Supportive</span><span class="status-value">${newsCounts.supportive || 0}</span></div>
+            <div class="status-line"><span class="status-key">Fresh rule</span><span class="status-value">Recent headlines only</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="card full" style="margin-top:16px;">
+        <div class="card-header"><span class="card-title">Rejected Symbol Examples</span><span class="card-badge blue">Why It Waited</span></div>
+        <div class="status-list">${exampleRows}</div>
+      </div>
+    </div>
+  `;
+}
+
 /* ─── Chart Renderers ─── */
 
 function renderEquityChart(curveData) {
@@ -1502,7 +1572,8 @@ async function runDailyScan() {
     container.innerHTML = "";
     
     if(!res.data || res.data.length === 0) {
-      container.innerHTML = `<p style="grid-column: 1 / -1; text-align: center; color: var(--muted); padding: 40px 0;">No tickers triggered breakout rules. Capital preserved.</p>`;
+      if (res.news_report) renderNewsReport(res.news_report);
+      container.innerHTML = renderScanDiagnostics(res.scan_report || {}, res.news_report || {});
       badge.innerText = "0 matches found";
       return;
     }

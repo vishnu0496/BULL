@@ -97,7 +97,7 @@ def _build_news_report(tickers=None, force_refresh: bool = False):
 
 def _apply_news_gate(candidates):
     if not candidates:
-        return candidates, _build_news_report(tickers=[], force_refresh=False)
+        return candidates, _build_news_report(force_refresh=False)
 
     report = _build_news_report(tickers=[c["ticker"] for c in candidates], force_refresh=False)
     by_ticker = {r["ticker"]: r for r in report.get("stock_reports", [])}
@@ -127,11 +127,11 @@ def startup_event():
 
 @app.get("/api/scan")
 def run_scanner(background_tasks: BackgroundTasks):
-    candidates = engine.scan()
+    candidates, scan_report = engine.scan_with_report()
     candidates, news_report = _apply_news_gate(candidates)
     for c in candidates:
         broker.log_engine_signal(c["ticker"], c["price"], c["ml_score"], c["rsi"], c["rvol"])
-    return {"status": "success", "data": candidates, "news_report": news_report}
+    return {"status": "success", "data": candidates, "scan_report": scan_report, "news_report": news_report}
 
 
 @app.get("/api/news-swarm")

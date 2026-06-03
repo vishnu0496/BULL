@@ -29,6 +29,7 @@ class BULLSignalEngine:
         self.tickers = [t for t in tickers if t != "BANK"]
         self.ensemble = MLBreakoutEnsemble()
         self.historical_data = {}
+        self.last_scan_report = {}
         
     def bootstrap_and_train(self):
         print("[Engine] Bootstrapping historical data for NSE universe...")
@@ -118,12 +119,35 @@ class BULLSignalEngine:
             "price": latest_15m['Close']
         }
 
-    def scan(self) -> list:
+    @staticmethod
+    def _reason_category(reason: str) -> str:
+        text = reason.lower()
+        if "no data" in text:
+            return "DATA"
+        if "gap" in text:
+            return "GAP"
+        if "rvol" in text:
+            return "VOLUME"
+        if "rsi" in text:
+            return "MOMENTUM"
+        if "blackout" in text:
+            return "TIME"
+        if "vix" in text:
+            return "MACRO"
+        if "ml" in text:
+            return "MODEL"
+        return "OTHER"
+
+    def scan_with_report(self) -> tuple[list, dict]:
         candidates = []
-        now = datetime.datetime.now().time()
+        rejected = []
+        real_now = datetime.datetime.now().time()
+        now = real_now
+        simulated_time = False
         
         if now < datetime.time(9, 15) or now > datetime.time(15, 30):
             now = datetime.time(10, 30) # Default simulation time outside market hours
+            simulated_time = True
             
         for ticker in self.tickers:
             result = self.evaluate_filters(ticker, now)
@@ -137,6 +161,53 @@ class BULLSignalEngine:
                     "rel_strength": float(result["rel_strength"]),
                     "atr": float(result["atr"])
                 })
+            else:
+                reason = result.get("reason", "Rejected by scanner rules")
+                rejected.append({
+                    "ticker": ticker,
+                    "reason": reason,
+                    "category": self._reason_category(reason),
+                })
                 
         candidates = sorted(candidates, key=lambda x: (x["rel_strength"], x["ml_score"]), reverse=True)
-        return candidates[:2]
+        selected = candidates[:2]
+
+        rejection_counts = {}
+        for item in rejected:
+            rejection_counts[item["category"]] = rejection_counts.get(item["category"], 0) + 1
+
+        top_rejection = max(rejection_counts.items(), key=lambda item: item[1])[0] if rejection_counts else "NONE"
+        if selected:
+            decision = "CANDIDATES_FOUND"
+            next_action = "Review candidates, then paper trade only if news gate and risk sizing also pass."
+        elif top_rejection == "VOLUME":
+            decision = "NO_TRADE_LOW_VOLUME"
+            next_action = "Wait. Breakouts without relative volume are usually weak."
+        elif top_rejection == "MODEL":
+            decision = "NO_TRADE_LOW_CONFIDENCE"
+            next_action = "Wait. The model does not see enough edge in the current patterns."
+        elif top_rejection == "DATA":
+            decision = "DATA_SYNC_NEEDED"
+            next_action = "Refresh data health or check internet/data source availability."
+        else:
+            decision = "NO_TRADE"
+            next_action = "Capital preserved. Re-scan later instead of forcing a trade."
+
+        self.last_scan_report = {
+            "decision": decision,
+            "scan_time": now.strftime("%H:%M"),
+            "real_time": real_now.strftime("%H:%M"),
+            "mode": "SIMULATED_MARKET_TIME" if simulated_time else "LIVE_MARKET_TIME",
+            "total_symbols": len(self.tickers),
+            "passed": len(selected),
+            "rejected": len(rejected),
+            "rejection_counts": rejection_counts,
+            "top_rejection": top_rejection,
+            "rejected_examples": rejected[:8],
+            "next_action": next_action,
+        }
+        return selected, self.last_scan_report
+
+    def scan(self) -> list:
+        candidates, _ = self.scan_with_report()
+        return candidates
