@@ -808,7 +808,7 @@
         </div>
         <div style="padding: 24px; display: flex; flex-direction: column; align-items: center; gap: 20px;">
           <p style="color: var(--muted); text-align: center; max-width: 650px; font-size: 14px; line-height: 1.6;">
-            Scan the NSE universe for high-probability breakout candidates. The system downloads live 15-minute chart ticks, applies multi-timeframe filters (Gap limit, Relative Volume, RSI bounds, INDIA VIX macro ceiling), and runs predictions using the walk-forward ensemble ML classifier.
+            Scan the NSE universe for high-probability breakout candidates. The system uses the BULL ₹0 Free Feed for 15-minute intraday candles, applies multi-timeframe filters (Gap limit, Relative Volume, RSI bounds, INDIA VIX macro ceiling), and runs predictions using the walk-forward ensemble ML classifier.
           </p>
           <button id="scan-btn" onclick="runDailyScan()" class="filter-btn active" style="font-size: 15px; padding: 10px 24px; border-radius: 8px; border-color: var(--green); color: var(--green); background: var(--green-dim);">
             ⚡ RUN BREAKOUT SCANNER
@@ -912,6 +912,10 @@
           <div class="status-list" id="health-status"></div>
         </div>
         <div class="card">
+          <div class="card-header"><span class="card-title">Free Feed Status</span><span class="card-badge blue" id="feed-status-badge">Checking</span></div>
+          <div class="status-list" id="feed-status"></div>
+        </div>
+        <div class="card full">
           <div class="card-header"><span class="card-title">Runtime</span><span class="card-badge blue">localhost:8000</span></div>
           <p class="terminal-note">Only the Antigravity Research Terminal should be running for daily use. The old port 8501 app is legacy and should stay closed unless we are migrating code from it.</p>
         </div>
@@ -1245,6 +1249,35 @@ function renderHealthStatus() {
     <div class="status-line"><span class="status-key">Trades</span><span class="status-value">${ALL_TRADES.length}</span></div>
     <div class="status-line"><span class="status-key">Closed/Open</span><span class="status-value">${closed}/${open}</span></div>
   `;
+  loadFeedStatus();
+}
+
+async function loadFeedStatus() {
+  const el = document.getElementById('feed-status');
+  const badge = document.getElementById('feed-status-badge');
+  if (!el || !badge) return;
+  badge.textContent = 'Checking';
+  try {
+    const r = await fetch(`${API_URL}/feed/status`);
+    const res = await r.json();
+    const feed = res.feed || {};
+    const healthy = String(feed.status || '').includes('HEALTHY');
+    const degraded = String(feed.status || '').includes('DEGRADED');
+    badge.textContent = feed.status || 'UNKNOWN';
+    badge.className = `card-badge ${healthy ? 'green' : degraded ? 'amber' : 'blue'}`;
+    el.innerHTML = `
+      <div class="status-line"><span class="status-key">Provider</span><span class="status-value">${feed.provider || 'BULL Free Feed'}</span></div>
+      <div class="status-line"><span class="status-key">Source</span><span class="status-value">${feed.source || 'yfinance/Yahoo'}</span></div>
+      <div class="status-line"><span class="status-key">Cost</span><span class="status-value">${feed.cost || 'INR 0'}</span></div>
+      <div class="status-line"><span class="status-key">Type</span><span class="status-value">Cached polling</span></div>
+      <div class="status-line"><span class="status-key">Healthy</span><span class="status-value">${feed.healthy_symbols || 0}/${feed.checked_symbols || 0}</span></div>
+      <div class="status-line"><span class="status-key">Cache</span><span class="status-value">${feed.cache_seconds || 60}s</span></div>
+    `;
+  } catch (e) {
+    badge.textContent = 'OFFLINE';
+    badge.className = 'card-badge amber';
+    el.innerHTML = '<p class="terminal-note">Free feed status could not reach the local API.</p>';
+  }
 }
 
 function newsGateClass(gateOrVerdict) {

@@ -3,6 +3,7 @@ import datetime
 import pandas as pd
 import yfinance as yf
 from ml_ensemble import MLBreakoutEnsemble
+from src.free_market_feed import BullFreeMarketFeed
 
 def download_data(ticker, **kwargs):
     df = yf.download(ticker, **kwargs)
@@ -28,6 +29,7 @@ class BULLSignalEngine:
     def __init__(self, tickers=list(SECTORS.keys())):
         self.tickers = [t for t in tickers if t != "BANK"]
         self.ensemble = MLBreakoutEnsemble()
+        self.feed = BullFreeMarketFeed(cache_seconds=60)
         self.historical_data = {}
         self.last_scan_report = {}
         
@@ -62,7 +64,7 @@ class BULLSignalEngine:
             return 1.0
 
     def evaluate_filters(self, ticker: str, current_time: datetime.time) -> dict:
-        df = download_data(ticker, period="5d", interval="15m")
+        df = self.feed.get_bars(ticker, period="5d", interval="15m")
         df_daily = self.historical_data.get(ticker)
         
         if df.empty or df_daily is None:
@@ -211,3 +213,6 @@ class BULLSignalEngine:
     def scan(self) -> list:
         candidates, _ = self.scan_with_report()
         return candidates
+
+    def feed_health(self) -> dict:
+        return self.feed.health(self.tickers)

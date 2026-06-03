@@ -138,6 +138,11 @@ def run_scanner(background_tasks: BackgroundTasks):
 def get_news_swarm(force_refresh: bool = False):
     return {"status": "success", "report": _build_news_report(force_refresh=force_refresh)}
 
+
+@app.get("/api/feed/status")
+def get_feed_status():
+    return {"status": "success", "feed": engine.feed_health()}
+
 @app.post("/api/trade/execute")
 def execute_trade(ticker: str, price: float, atr: float, ml_score: float):
     trade = broker.execute_trade(ticker, price, atr, ml_score)
