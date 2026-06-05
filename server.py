@@ -1,16 +1,21 @@
 # server.py
 import time
+import json
+from datetime import datetime, timedelta
 
 from fastapi import FastAPI, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 import uvicorn
+from apscheduler.schedulers.background import BackgroundScheduler
 from engine import BULLSignalEngine
 from paper_broker import BULLPaperBroker
 from src import database
+from src import data_health
 from src.fno_engine import scan_fno_watchlist
 from src.news import fetch_stock_news
 from src.news_analyst import summarize_ticker_news
+from src.nse_feed import get_indices, get_market_status, get_option_chain
 from src.universe_engine import compute_skill_gate, get_opportunity_counts, get_universe_payload
 
 app = FastAPI(title="BULL Stock Terminal Engine")
@@ -27,6 +32,7 @@ engine = BULLSignalEngine()
 broker = BULLPaperBroker(initial_capital=100000.0)
 NEWS_CACHE = {"timestamp": 0.0, "report": None}
 NEWS_CACHE_SECONDS = 900
+DATA_SCHEDULER = BackgroundScheduler(timezone="Asia/Kolkata")
 
 
 def _build_news_report(tickers=None, force_refresh: bool = False):
@@ -154,7 +160,19 @@ def serve_universe():
 
 @app.on_event("startup")
 def startup_event():
+    database.init_db()
+    data_health.ensure_data_health_table()
     engine.bootstrap_and_train()
+    if not DATA_SCHEDULER.running:
+        DATA_SCHEDULER.add_job(
+            data_health.run_data_health_check,
+            "interval",
+            minutes=30,
+            id="bull_data_health_monitor",
+            replace_existing=True,
+            next_run_time=datetime.now() + timedelta(minutes=30),
+        )
+        DATA_SCHEDULER.start()
 
 @app.get("/api/scan")
 def run_scanner(background_tasks: BackgroundTasks):
@@ -173,6 +191,45 @@ def get_news_swarm(force_refresh: bool = False):
 @app.get("/api/feed/status")
 def get_feed_status():
     return {"status": "success", "feed": engine.feed_health()}
+
+
+@app.get("/api/data/health")
+def get_data_health():
+    """Return data-quality status for the tracked universe."""
+    return data_health.get_data_health_summary(run_if_empty=True)
+
+
+@app.get("/api/market/status")
+def get_nse_market_status():
+    """Return NSE market status using NSE public data with local fallback."""
+    return get_market_status()
+
+
+@app.get("/api/indices")
+def get_live_indices():
+    """Return the latest live-ish index strip values."""
+    return get_indices()
+
+
+@app.get("/api/indices/stream")
+def stream_live_indices():
+    """Stream index-strip updates for the topbar."""
+    def event_generator():
+        while True:
+            try:
+                payload = get_indices()
+            except Exception as exc:
+                payload = {"items": [], "error": str(exc), "fetched_at": time.strftime("%Y-%m-%d %H:%M:%S")}
+            yield f"data: {json.dumps(payload, default=str)}\n\n"
+            time.sleep(60)
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+@app.get("/api/option-chain/{symbol}")
+def get_nse_option_chain(symbol: str = "NIFTY"):
+    """Return NSE option-chain positioning summary."""
+    return get_option_chain(symbol)
 
 
 @app.get("/api/universe")
