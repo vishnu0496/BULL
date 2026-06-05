@@ -119,6 +119,24 @@ def init_db():
         cursor.execute("ALTER TABLE capital_settings ADD COLUMN kite_request_token TEXT DEFAULT ''")
     if 'autopilot' not in columns:
         cursor.execute("ALTER TABLE capital_settings ADD COLUMN autopilot INTEGER DEFAULT 0")
+
+    # Migration for fii_dii_flows columns
+    cursor.execute("PRAGMA table_info(fii_dii_flows)")
+    fii_cols = [col[1] for col in cursor.fetchall()]
+    if fii_cols: # only check if table exists
+        if 'source' not in fii_cols:
+            cursor.execute("ALTER TABLE fii_dii_flows ADD COLUMN source TEXT DEFAULT 'NSE_API'")
+        if 'confidence' not in fii_cols:
+            cursor.execute("ALTER TABLE fii_dii_flows ADD COLUMN confidence TEXT DEFAULT 'HIGH'")
+
+    # Migration for promoter_activity columns
+    cursor.execute("PRAGMA table_info(promoter_activity)")
+    prom_cols = [col[1] for col in cursor.fetchall()]
+    if prom_cols:
+        if 'source' not in prom_cols:
+            cursor.execute("ALTER TABLE promoter_activity ADD COLUMN source TEXT DEFAULT 'NSE_API'")
+        if 'confidence' not in prom_cols:
+            cursor.execute("ALTER TABLE promoter_activity ADD COLUMN confidence TEXT DEFAULT 'HIGH'")
     
     # Seed default row if empty
     cursor.execute("SELECT COUNT(*) FROM capital_settings WHERE id = 1")
@@ -173,6 +191,92 @@ def init_db():
             earnings_date TEXT,
             dividend_date TEXT,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    
+    # 8. FII/DII daily flows table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS fii_dii_flows (
+            date DATE PRIMARY KEY,
+            fii_buy REAL,
+            fii_sell REAL,
+            fii_net REAL,
+            dii_buy REAL,
+            dii_sell REAL,
+            dii_net REAL,
+            market_impact TEXT,
+            source TEXT DEFAULT 'NSE_API',
+            confidence TEXT DEFAULT 'HIGH'
+        )
+    """)
+
+    # 9. Earnings Calendar table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS earnings_calendar (
+            ticker TEXT,
+            result_date DATE,
+            result_type TEXT,
+            estimated_eps REAL,
+            actual_eps REAL,
+            revenue_estimate REAL,
+            actual_revenue REAL,
+            beat_miss TEXT,
+            surprise_pct REAL,
+            price_reaction_1d REAL,
+            historical_beat_rate REAL,
+            PRIMARY KEY (ticker, result_date)
+        )
+    """)
+
+    # 10. Sector Rotation table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS sector_rotation (
+            date DATE,
+            sector TEXT,
+            weekly_return REAL,
+            monthly_return REAL,
+            rs_score REAL,
+            momentum TEXT,
+            rank INTEGER,
+            signal TEXT,
+            PRIMARY KEY (date, sector)
+        )
+    """)
+
+    # 11. Pre-Market Signals table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS premarket_signals (
+            date DATE PRIMARY KEY,
+            gift_nifty_gap REAL,
+            sp500_chg REAL,
+            nasdaq_chg REAL,
+            asia_score REAL,
+            india_vix REAL,
+            fii_yesterday REAL,
+            pre_market_score REAL,
+            classification TEXT,
+            recommendation TEXT,
+            generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    # 12. Promoter Activity table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS promoter_activity (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date DATE,
+            ticker TEXT,
+            person_name TEXT,
+            designation TEXT,
+            transaction_type TEXT,
+            shares INTEGER,
+            value_crore REAL,
+            holding_before REAL,
+            holding_after REAL,
+            signal_strength TEXT,
+            classification TEXT,
+            source TEXT DEFAULT 'NSE_API',
+            confidence TEXT DEFAULT 'HIGH'
         )
     """)
     

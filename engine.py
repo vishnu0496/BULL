@@ -120,7 +120,136 @@ class BULLSignalEngine:
         except Exception:
             return 1.0
 
+    def compute_conviction_score(self, ticker: str, base_result: dict) -> dict:
+        """Calculate a conviction score (0-100) and grade (A+ to C/REJECT) using 5 intelligence layers."""
+        from src.fii_tracker import get_fii_signal
+        from src.earnings_calendar import check_earnings_blackout, get_earnings_edge
+        from src.sector_rotation import should_trade_sector
+        from src.premarket_signals import get_premarket_score
+        from src.promoter_tracker import get_promoter_signal
+        from src.database import get_news_cache
+
+        # 1. Technical Score (max 30 pts)
+        rvol = base_result.get("rvol", 1.0)
+        rsi = base_result.get("rsi", 50.0)
+        rel_strength = base_result.get("rel_strength", 0.0)
+        
+        tech_rvol = min(3.0, rvol) / 3.0 * 10
+        
+        if 50 <= rsi <= 65:
+            tech_rsi = 10.0
+        elif 35 <= rsi < 50 or 65 < rsi <= 70:
+            tech_rsi = 5.0
+        else:
+            tech_rsi = 2.0
+            
+        tech_rs = 10.0 if rel_strength > 0.05 else (5.0 if rel_strength > 0.0 else 0.0)
+        tech_score = round(tech_rvol + tech_rsi + tech_rs, 2)
+        tech_score = max(0.0, min(30.0, tech_score))
+
+        # 2. ML Ensemble Score (max 25 pts)
+        ml_score = base_result.get("ml_score", 0.5)
+        ml_points = round(ml_score * 25.0, 2)
+        ml_points = max(0.0, min(25.0, ml_points))
+
+        # 3. Macro Score (max 20 pts)
+        pm_data = get_premarket_score()
+        pm_score = pm_data.get("pre_market_score", 50.0)
+        macro_pm = pm_score / 100.0 * 10.0
+        
+        fii_data = get_fii_signal()
+        impact = fii_data.get("market_impact", "NEUTRAL")
+        if impact == "STRONG_BULL":
+            macro_fii = 5.0
+        elif impact == "MILD_BULL":
+            macro_fii = 4.0
+        elif impact == "NEUTRAL":
+            macro_fii = 3.0
+        elif impact == "MILD_BEAR":
+            macro_fii = 1.0
+        else:
+            macro_fii = 0.0
+            
+        vix = pm_data.get("india_vix", 15.0)
+        if vix < 13.0:
+            macro_vix = 5.0
+        elif vix < 16.0:
+            macro_vix = 4.0
+        elif vix < 20.0:
+            macro_vix = 2.0
+        else:
+            macro_vix = 0.0
+            
+        macro_score = round(macro_pm + macro_fii + macro_vix, 2)
+        macro_score = max(0.0, min(20.0, macro_score))
+
+        # 4. News Score (max 15 pts)
+        news = get_news_cache(ticker)
+        news_score = 10.0
+        if news:
+            sentiments = [n.get("sentiment_score", 0.0) for n in news if n.get("sentiment_score") is not None]
+            if sentiments:
+                avg_sent = sum(sentiments) / len(sentiments)
+                news_score = round((avg_sent + 1.0) / 2.0 * 15.0, 2)
+        news_score = max(0.0, min(15.0, news_score))
+
+        # 5. Fundamental Score (max 10 pts)
+        prom_data = get_promoter_signal(ticker)
+        prom_type = prom_data.get("transaction_type", "NEUTRAL")
+        prom_strength = prom_data.get("signal_strength", "WEAK_SIGNAL")
+        
+        fund_prom = 0.0
+        if prom_type == "BUY":
+            fund_prom = 4.0 if "STRONG" in prom_strength else 2.0
+        elif prom_type == "SELL":
+            fund_prom = -4.0
+            
+        earn_edge = get_earnings_edge(ticker)
+        fund_edge = 3.0 if earn_edge.get("has_edge", False) else 0.0
+        
+        blackout_data = check_earnings_blackout(ticker)
+        fund_blackout = 0.0 if blackout_data.get("in_blackout", False) else 3.0
+        
+        fund_score = round(fund_prom + fund_edge + fund_blackout, 2)
+        fund_score = max(0.0, min(10.0, fund_score))
+
+        # Total
+        total_score = round(tech_score + ml_points + macro_score + news_score + fund_score, 2)
+        total_score = max(0.0, min(100.0, total_score))
+
+        # Grade
+        if total_score >= 85:
+            grade = "A+"
+        elif total_score >= 70:
+            grade = "A"
+        elif total_score >= 55:
+            grade = "B"
+        elif total_score >= 40:
+            grade = "C"
+        else:
+            grade = "REJECT"
+
+        return {
+            "conviction_score": total_score,
+            "conviction_grade": grade,
+            "promoter_type": prom_type,
+            "promoter_strength": prom_strength,
+            "score_breakdown": {
+                "technical": tech_score,
+                "ml": ml_points,
+                "macro": macro_score,
+                "news": news_score,
+                "fundamental": fund_score
+            }
+        }
+
     def evaluate_filters(self, ticker: str, current_time: datetime.time) -> dict:
+        from src.fii_tracker import get_fii_signal
+        from src.earnings_calendar import check_earnings_blackout
+        from src.sector_rotation import should_trade_sector
+        from src.premarket_signals import get_premarket_score
+        from src.promoter_tracker import get_promoter_signal
+
         df = self.feed.get_bars(ticker, period="5d", interval="15m")
         df_daily = self.historical_data.get(ticker)
         
@@ -164,6 +293,11 @@ class BULLSignalEngine:
             "watch_score": round(float(watch_score), 2),
         }
 
+        # Calculate conviction details first so they are attached to all results
+        conviction = self.compute_conviction_score(ticker, base_result)
+        base_result.update(conviction)
+
+        # Enforce basic technical/ML/hours filters
         if gap_percent > 2.0:
             return {**base_result, "passed": False, "reason": f"Gap up too large: {gap_percent:.2f}%"}
 
@@ -173,11 +307,11 @@ class BULLSignalEngine:
         if rsi > 68 or rsi < 35:
             return {**base_result, "passed": False, "reason": f"RSI out of bounds: {rsi:.1f}"}
             
-        # 4. Blackout Hours
+        # Blackout Hours
         if current_time < datetime.time(9, 30) or current_time > datetime.time(15, 0):
             return {**base_result, "passed": False, "reason": f"Blackout Window: {current_time}"}
             
-        # 5. Macro VIX
+        # Macro VIX Check
         try:
             vix = download_data("^INDIAVIX", period="1d")['Close'].iloc[-1]
             if vix > 22.0:
@@ -185,9 +319,36 @@ class BULLSignalEngine:
         except Exception:
             pass
             
-        # 6. ML Verification
+        # ML Verification
         if ml_score < 0.62:
             return {**base_result, "passed": False, "reason": f"Low ML Confidence: {ml_score:.2%}"}
+
+        # Enforce New Intelligence Layer Checks (Blocks & Downgrades)
+        
+        # 1. Premarket STRONG_BEAR_OPEN blocking (premarket score < 30)
+        pm_data = get_premarket_score()
+        if pm_data.get("pre_market_score", 50.0) < 30.0:
+            return {**base_result, "passed": False, "reason": "STRONG_BEAR_OPEN: Premarket score below 30"}
+
+        # 2. Earnings Blackout blocking (3 days before to 1 day after)
+        blackout_data = check_earnings_blackout(ticker)
+        if blackout_data.get("in_blackout", False):
+            return {**base_result, "passed": False, "reason": f"Earnings Blackout: Announcement date {blackout_data.get('result_date')}"}
+
+        # 3. FII Consecutive Sell Streak (>= 3 days) -> Downgrade trade to WAIT
+        fii_data = get_fii_signal()
+        if fii_data.get("streak_days", 0) >= 3 and fii_data.get("streak_type") == "SELL":
+            return {**base_result, "passed": False, "reason": f"FII Selling Streak: Downgraded to WAIT ({fii_data.get('streak_days')} days)"}
+
+        # 4. Promoter Sell Red Flag -> Downgrade trade to WAIT
+        prom_data = get_promoter_signal(ticker)
+        if prom_data.get("transaction_type") == "SELL" and prom_data.get("signal_strength") in ["STRONG_RED_FLAG", "MODERATE_RED_FLAG"]:
+            return {**base_result, "passed": False, "reason": f"Promoter Selling Red Flag: Downgraded to WAIT ({prom_data.get('signal_strength')})"}
+
+        # 5. Sector Rotation Lagging -> Downgrade trade to WATCH
+        sec_data = should_trade_sector(ticker)
+        if sec_data.get("signal") == "LAGGING" or sec_data.get("rs_score", 1.0) < 0.9:
+            return {**base_result, "passed": False, "reason": f"Sector Lagging: Downgraded to WATCH (RS: {sec_data.get('rs_score'):.2f})"}
         
         return {
             **base_result,
@@ -206,12 +367,16 @@ class BULLSignalEngine:
             return "VOLUME"
         if "rsi" in text:
             return "MOMENTUM"
-        if "blackout" in text:
+        if "blackout" in text or "earnings" in text:
             return "TIME"
-        if "vix" in text:
+        if "vix" in text or "premarket" in text or "bear_open" in text or "fii" in text:
             return "MACRO"
         if "ml" in text:
             return "MODEL"
+        if "promoter" in text:
+            return "FUNDAMENTALS"
+        if "sector" in text:
+            return "SECTOR"
         return "OTHER"
 
     def scan_with_report(self) -> tuple[list, dict]:
@@ -236,7 +401,12 @@ class BULLSignalEngine:
                     "rsi": float(result["rsi"]),
                     "rvol": float(result["rvol"]),
                     "rel_strength": float(result["rel_strength"]),
-                    "atr": float(result["atr"])
+                    "atr": float(result["atr"]),
+                    "conviction_score": result.get("conviction_score", 50.0),
+                    "conviction_grade": result.get("conviction_grade", "C"),
+                    "promoter_type": result.get("promoter_type", "NEUTRAL"),
+                    "promoter_strength": result.get("promoter_strength", "WEAK_SIGNAL"),
+                    "score_breakdown": result.get("score_breakdown", {})
                 })
             else:
                 reason = result.get("reason", "Rejected by scanner rules")
@@ -250,12 +420,18 @@ class BULLSignalEngine:
                     "rsi": float(result.get("rsi", 0.0)),
                     "ml_score": float(result.get("ml_score", 0.0)),
                     "rel_strength": float(result.get("rel_strength", 0.0)),
+                    "conviction_score": result.get("conviction_score", 50.0),
+                    "conviction_grade": result.get("conviction_grade", "C"),
+                    "promoter_type": result.get("promoter_type", "NEUTRAL"),
+                    "promoter_strength": result.get("promoter_strength", "WEAK_SIGNAL"),
+                    "score_breakdown": result.get("score_breakdown", {})
                 }
                 rejected.append(item)
                 if item["category"] not in {"DATA", "TIME"} and item["watch_score"] > 0:
                     watchlist.append(item)
                 
-        candidates = sorted(candidates, key=lambda x: (x["rel_strength"], x["ml_score"]), reverse=True)
+        # Sort by conviction score (primary) descending
+        candidates = sorted(candidates, key=lambda x: (x["conviction_score"], x["rel_strength"], x["ml_score"]), reverse=True)
         selected = candidates[:2]
         top_watch = sorted(watchlist, key=lambda x: x["watch_score"], reverse=True)[:3]
 

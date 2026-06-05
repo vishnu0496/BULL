@@ -673,6 +673,73 @@
     .bento, .bento2 { grid-template-columns: 1fr; }
     .content { padding: 16px; }
   }
+
+  /* ── Sector Heatmap Strip ── */
+  .sector-strip {
+    display: flex;
+    overflow-x: auto;
+    gap: 8px;
+    padding: 10px 32px;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    scrollbar-width: none; /* Hide scrollbar for Firefox */
+  }
+  .sector-strip::-webkit-scrollbar {
+    display: none; /* Hide scrollbar for Chrome/Safari */
+  }
+  .sector-chip {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    padding: 6px 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    min-width: 100px;
+    font-size: 11px;
+    transition: all 0.2s ease;
+  }
+  .sector-chip:hover {
+    border-color: var(--border2);
+    transform: translateY(-1px);
+  }
+  .sector-chip-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2px;
+  }
+  .sector-chip-name {
+    font-weight: 600;
+    color: var(--text);
+  }
+  .sector-chip-rank {
+    font-family: var(--mono);
+    color: var(--muted);
+    font-size: 9px;
+  }
+  .sector-chip-return {
+    font-family: var(--mono);
+    font-weight: bold;
+  }
+  .sector-chip.green {
+    border-left: 3px solid var(--green);
+  }
+  .sector-chip.green .sector-chip-return {
+    color: var(--green);
+  }
+  .sector-chip.red {
+    border-left: 3px solid var(--red);
+  }
+  .sector-chip.red .sector-chip-return {
+    color: var(--red);
+  }
+  .sector-chip.neutral {
+    border-left: 3px solid var(--muted);
+  }
+  .sector-chip.neutral .sector-chip-return {
+    color: var(--text);
+  }
 </style>
 </head>
 <body>
@@ -693,6 +760,7 @@
         <button class="nav-item" id="nav-watchlist" onclick="switchTab('watchlist')"><span class="nav-dot"></span>Watchlist</button>
         <button class="nav-item" id="nav-sectors" onclick="switchTab('sectors')"><span class="nav-dot"></span>Sector Leaders</button>
         <button class="nav-item" id="nav-news" onclick="switchTab('news')"><span class="nav-dot"></span>News Swarm</button>
+        <button class="nav-item" onclick="window.location.href='/intelligence.html'"><span class="nav-dot"></span>Market Intelligence</button>
         <button class="nav-item" onclick="window.location.href='/universe.html'"><span class="nav-dot"></span>Market Universe</button>
         <button class="nav-item" onclick="scrollFnoWatch()"><span class="nav-dot"></span>F&amp;O Watch</button>
       </div>
@@ -736,6 +804,11 @@
           <button class="filter-btn" data-period="365">ALL</button>
         </div>
       </div>
+    </div>
+
+    <!-- Sector Heatmap Strip -->
+    <div class="sector-strip" id="sector-heatmap-strip">
+      <span class="text-muted" style="font-size: 11px; padding: 4px;">Loading sector rotation metrics...</span>
     </div>
 
     <!-- TAB 1: Analytics -->
@@ -2037,24 +2110,57 @@ async function runDailyScan() {
       const gateClass = newsGateClass(gate);
       const isBlocked = gate === 'BLOCKED';
       const newsSummary = stock.news_summary || 'No strong news risk found.';
+      
+      let promoterBadgeHtml = '';
+      if (stock.promoter_type === 'BUY') {
+        promoterBadgeHtml = `<span class="card-badge green" style="margin: 4px 0; display: inline-block;">👥 PROMOTER BUYING</span>`;
+      } else if (stock.promoter_type === 'SELL') {
+        promoterBadgeHtml = `<span class="card-badge red" style="margin: 4px 0; display: inline-block;">⚠️ PROMOTER SELLING</span>`;
+      }
+      
+      let gradeClass = 'blue';
+      if (stock.conviction_grade === 'A+' || stock.conviction_grade === 'A') gradeClass = 'green';
+      else if (stock.conviction_grade === 'B') gradeClass = 'blue';
+      else if (stock.conviction_grade === 'C') gradeClass = 'warn';
+      else gradeClass = 'red';
+
+      const breakdown = stock.score_breakdown || { technical: 0, ml: 0, macro: 0, news: 0, fundamental: 0 };
+
       el.className = "scan-card";
       el.innerHTML = `
         <div style="display:flex; justify-content:space-between; align-items:center;">
           <span style="font-family:var(--mono); font-weight:700; font-size:16px; color:var(--green);">${stock.ticker.replace('.NS','')}</span>
-          <span class="card-badge green">Score: ${(stock.ml_score*100).toFixed(0)}%</span>
+          <span class="card-badge ${gradeClass}">Conviction: ${stock.conviction_grade} (${stock.conviction_score.toFixed(0)})</span>
         </div>
-        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+        
+        <div style="margin: 8px 0 4px 0;">
+          <div style="height: 6px; width: 100%; background: var(--border); border-radius: 3px; overflow: hidden;">
+            <div style="height: 100%; width: ${stock.conviction_score}%; background: ${stock.conviction_score >= 70 ? 'var(--green)' : 'var(--blue)'};"></div>
+          </div>
+        </div>
+        
+        <div style="font-size: 10px; color: var(--muted); display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; margin-bottom: 8px; font-family: var(--mono);">
+          <div>Tech: <span style="color:var(--text)">${breakdown.technical.toFixed(0)}/30</span></div>
+          <div>ML: <span style="color:var(--text)">${breakdown.ml.toFixed(0)}/25</span></div>
+          <div>Macro: <span style="color:var(--text)">${breakdown.macro.toFixed(0)}/20</span></div>
+          <div>News: <span style="color:var(--text)">${breakdown.news.toFixed(0)}/15</span></div>
+          <div style="grid-column: span 2;">Fund: <span style="color:var(--text)">${breakdown.fundamental.toFixed(0)}/10</span></div>
+        </div>
+
+        ${promoterBadgeHtml}
+
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top: 4px;">
           <span class="news-gate ${gateClass}">NEWS ${gate}</span>
           <span style="color:var(--muted); font-size:11px; text-align:right;">${Number(stock.news_score || 0).toFixed(1)}</span>
         </div>
         <div style="font-size:12px; color:${isBlocked ? 'var(--red)' : 'var(--muted)'}; line-height:1.5;">${newsSummary}</div>
-        <div style="font-family:var(--mono); font-size:12px; color:var(--muted); display:flex; flex-direction:column; gap:4px;">
+        <div style="font-family:var(--mono); font-size:12px; color:var(--muted); display:flex; flex-direction:column; gap:4px; margin-top: 4px;">
           <div>Trigger Price: <span style="color:var(--text)">₹${stock.price.toFixed(2)}</span></div>
           <div>Relative Volume (RVOL): <span style="color:var(--text)">${stock.rvol.toFixed(1)}x</span></div>
           <div>Relative Strength vs Nifty: <span style="color:var(--text)">${(stock.rel_strength*100).toFixed(2)}%</span></div>
           <div>ATR Volatility (20D): <span style="color:var(--text)">₹${stock.atr.toFixed(2)}</span></div>
         </div>
-        <button ${isBlocked ? 'disabled' : ''} onclick="executePaperTrade('${stock.ticker}', ${stock.price}, ${stock.atr}, ${stock.ml_score})" class="filter-btn active" style="margin-top:4px; padding:8px 0; border-radius:6px; font-weight:700; width:100%; ${isBlocked ? 'border-color:var(--red); color:var(--red); background:var(--red-dim); cursor:not-allowed;' : ''}">
+        <button ${isBlocked ? 'disabled' : ''} onclick="executePaperTrade('${stock.ticker}', ${stock.price}, ${stock.atr}, ${stock.ml_score})" class="filter-btn active" style="margin-top:8px; padding:8px 0; border-radius:6px; font-weight:700; width:100%; ${isBlocked ? 'border-color:var(--red); color:var(--red); background:var(--red-dim); cursor:not-allowed;' : ''}">
           ${isBlocked ? 'BLOCKED BY NEWS RISK' : 'EXECUTE PAPER ORDER (1% RISK)'}
         </button>
       `;
@@ -2104,6 +2210,38 @@ async function closeAllOpenTrades() {
   }
 }
 
+async function loadSectorHeatmap() {
+  const strip = document.getElementById('sector-heatmap-strip');
+  if (!strip) return;
+  try {
+    const res = await fetch(`${API_URL}/sectors/rankings`);
+    const data = await res.json();
+    if (data.status === 'success' && data.data && data.data.length > 0) {
+      strip.innerHTML = data.data.map(sec => {
+        let cls = 'neutral';
+        if (sec.rank <= 3) cls = 'green';
+        else if (sec.rank >= 8) cls = 'red';
+        
+        const sign = sec.weekly_return >= 0 ? '+' : '';
+        return `
+          <div class="sector-chip ${cls}" title="Relative Strength: ${sec.rs_score.toFixed(2)} (${sec.momentum})" style="cursor: pointer;" onclick="window.location.href='/intelligence.html'">
+            <div class="sector-chip-header">
+              <span class="sector-chip-name">${sec.sector}</span>
+              <span class="sector-chip-rank">#${sec.rank}</span>
+            </div>
+            <span class="sector-chip-return">${sign}${sec.weekly_return.toFixed(2)}%</span>
+          </div>
+        `;
+      }).join('');
+    } else {
+      strip.innerHTML = '<span class="text-muted" style="font-size: 11px; padding: 4px;">No sector rotation data loaded.</span>';
+    }
+  } catch(e) {
+    console.error("Failed to load sector heatmap strip:", e);
+    strip.innerHTML = '<span class="text-muted" style="font-size: 11px; padding: 4px; color: var(--red);">Error loading sector rotation data</span>';
+  }
+}
+
 /* ─── Period Filter Handling ─── */
 document.getElementById('periodFilter').addEventListener('click', (e) => {
   const btn = e.target.closest('[data-period]');
@@ -2119,8 +2257,10 @@ buildGates();
 connectIndicesStream();
 loadMarketStatus();
 loadDataHealthBadge();
+loadSectorHeatmap();
 window.setInterval(loadMarketStatus, 60000);
 window.setInterval(loadDataHealthBadge, 300000);
+window.setInterval(loadSectorHeatmap, 60000);
 fetchTelemetry().then(() => {
   const initialTab = (window.location.hash || '#analytics').replace('#', '');
   switchTab(PAGE_TITLES[initialTab] ? initialTab : 'analytics');

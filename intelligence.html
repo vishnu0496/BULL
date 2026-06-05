@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>BULL — Market Intelligence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg: #0a0c10;
+    --surface: #111318;
+    --surface2: #181c24;
+    --surface3: #1e2430;
+    --border: rgba(255,255,255,0.07);
+    --border2: rgba(255,255,255,0.13);
+    --text: #e8eaf0;
+    --muted: #6b7280;
+    --dim: #3a3f4b;
+    --green: #10b981;
+    --green-dim: rgba(16,185,129,0.12);
+    --red: #ef4444;
+    --red-dim: rgba(239,68,68,0.12);
+    --amber: #f59e0b;
+    --amber-dim: rgba(245,158,11,0.12);
+    --blue: #3b82f6;
+    --blue-dim: rgba(59,130,246,0.12);
+    --accent: #10b981;
+    --font: 'DM Sans', sans-serif;
+    --mono: 'Space Mono', monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    line-height: 1.5;
+    padding-bottom: 60px;
+    overflow-x: hidden;
+  }
+
+  .header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 18px 32px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .logo {
+    font-family: var(--mono);
+    font-weight: 700;
+    font-size: 20px;
+    color: var(--green);
+    letter-spacing: 2px;
+  }
+
+  .subtitle {
+    font-size: 12px;
+    color: var(--muted);
+    font-family: var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    border-left: 1px solid var(--border);
+    padding-left: 12px;
+  }
+
+  .btn {
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 8px 16px;
+    border-radius: 6px;
+    border: 1px solid var(--border2);
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .btn:hover {
+    background: var(--surface2);
+    border-color: var(--text);
+    transform: translateY(-1px);
+  }
+
+  .container {
+    max-width: 1400px;
+    margin: 32px auto;
+    padding: 0 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+  }
+
+  /* ── Grid Layouts ── */
+  .grid-top {
+    display: grid;
+    grid-template-columns: 1.2fr 1.8fr;
+    gap: 24px;
+  }
+
+  .grid-four {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 24px;
+  }
+
+  .grid-half {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+  }
+
+  /* ── Card Styling ── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 12px;
+  }
+
+  .card-title {
+    font-family: var(--mono);
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--muted);
+    font-weight: 700;
+  }
+
+  .card-badge {
+    font-family: var(--mono);
+    font-size: 9px;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 4px;
+    text-transform: uppercase;
+  }
+
+  .badge-green { background: var(--green-dim); color: var(--green); border: 1px solid rgba(16,185,129,0.2); }
+  .badge-red { background: var(--red-dim); color: var(--red); border: 1px solid rgba(239,68,68,0.2); }
+  .badge-blue { background: var(--blue-dim); color: var(--blue); border: 1px solid rgba(59,130,246,0.2); }
+  .badge-warn { background: var(--amber-dim); color: var(--amber); border: 1px solid rgba(245,158,11,0.2); }
+
+  /* ── Premarket Gauge ── */
+  .gauge-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 12px 0;
+    position: relative;
+  }
+
+  .gauge-score {
+    font-family: var(--mono);
+    font-size: 48px;
+    font-weight: 700;
+    line-height: 1;
+    margin-top: 10px;
+  }
+
+  .gauge-label {
+    font-size: 14px;
+    font-weight: 600;
+    margin-top: 4px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .gauge-rec {
+    font-size: 12px;
+    color: var(--muted);
+    text-align: center;
+    margin-top: 8px;
+    max-width: 260px;
+    line-height: 1.4;
+  }
+
+  /* ── Lists & Metrics ── */
+  .metric-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+    padding: 8px 0;
+    border-bottom: 1px dashed var(--border);
+  }
+
+  .metric-row:last-child {
+    border-bottom: none;
+  }
+
+  .metric-label {
+    color: var(--muted);
+  }
+
+  .metric-value {
+    font-family: var(--mono);
+    font-weight: 600;
+  }
+
+  .metric-value.green { color: var(--green); }
+  .metric-value.red { color: var(--red); }
+
+  /* ── Tables ── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    text-align: left;
+  }
+
+  th {
+    font-family: var(--mono);
+    color: var(--muted);
+    font-weight: 400;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 1px;
+  }
+
+  td {
+    padding: 12px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+  }
+
+  tr:hover td {
+    background: rgba(255,255,255,0.01);
+  }
+
+  /* ── Conviction Breakdown List ── */
+  .leaderboard-item {
+    display: grid;
+    grid-template-columns: 1.5fr 1fr 2fr 1fr 1fr;
+    gap: 16px;
+    align-items: center;
+    padding: 16px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface2);
+    transition: all 0.2s ease;
+  }
+
+  .leaderboard-item:hover {
+    border-color: var(--border2);
+  }
+
+  .breakdown-bars {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+
+  .breakdown-segment {
+    flex: 1;
+    height: 12px;
+    background: var(--border);
+    border-radius: 2px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .breakdown-fill {
+    height: 100%;
+    background: var(--blue);
+  }
+  .breakdown-fill.tech { background: #6366f1; }
+  .breakdown-fill.ml { background: #3b82f6; }
+  .breakdown-fill.macro { background: #10b981; }
+  .breakdown-fill.news { background: #f59e0b; }
+  .breakdown-fill.fund { background: #ec4899; }
+
+  .tooltip-text {
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    padding: 2px 6px;
+    font-size: 9px;
+    font-family: var(--mono);
+    border-radius: 3px;
+    display: none;
+    white-space: nowrap;
+    z-index: 10;
+  }
+
+  .breakdown-segment:hover .tooltip-text {
+    display: block;
+  }
+</style>
+</head>
+<body>
+
+<header class="header">
+  <div class="brand">
+    <span class="logo">BULL</span>
+    <span class="subtitle">Market Intelligence Layer v2</span>
+  </div>
+  <a href="/" class="btn">
+    &larr; Return to Terminal
+  </a>
+</header>
+
+<div class="container">
+  <!-- Data Sync Status & Control Bar -->
+  <div class="card" style="padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; flex-direction: row; gap: 16px; background: var(--surface); border: 1px solid var(--border);">
+    <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+      <span style="font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--muted); font-weight: 700;">Data Sync Status:</span>
+      <div style="display: flex; align-items: center; gap: 24px; flex-wrap: wrap;">
+        <span class="status-dot-item" style="display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500;">
+          <span id="dot-fii" style="width: 8px; height: 8px; border-radius: 50%; background: var(--muted); display: inline-block;"></span> FII/DII
+        </span>
+        <span class="status-dot-item" style="display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500;">
+          <span id="dot-sectors" style="width: 8px; height: 8px; border-radius: 50%; background: var(--muted); display: inline-block;"></span> Sectors
+        </span>
+        <span class="status-dot-item" style="display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500;">
+          <span id="dot-premarket" style="width: 8px; height: 8px; border-radius: 50%; background: var(--muted); display: inline-block;"></span> Pre-Market
+        </span>
+        <span class="status-dot-item" style="display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500;">
+          <span id="dot-earnings" style="width: 8px; height: 8px; border-radius: 50%; background: var(--muted); display: inline-block;"></span> Earnings
+        </span>
+        <span class="status-dot-item" style="display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500;">
+          <span id="dot-promoters" style="width: 8px; height: 8px; border-radius: 50%; background: var(--muted); display: inline-block;"></span> Promoters
+        </span>
+      </div>
+    </div>
+    <button id="btn-refresh-all" onclick="triggerIntelligenceRefresh()" class="btn" style="padding: 6px 12px; font-size: 11px;">
+      ↻ Refresh All
+    </button>
+  </div>
+
+  <!-- Top Row: Premarket Score Desk & FII Flows -->
+  <div class="grid-top">
+    <!-- Premarket score gauge -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Pre-Market Desk</span>
+        <span id="pm-badge" class="card-badge badge-blue">Analyzing...</span>
+      </div>
+      <div class="gauge-container">
+        <div id="pm-score" class="gauge-score">--</div>
+        <div id="pm-class" class="gauge-label">Calculating</div>
+        <div id="pm-rec" class="gauge-rec">Updating global gap variables, volatility matrix indices, and US/Asia cues...</div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:8px; margin-top:8px;">
+        <div class="metric-row">
+          <span class="metric-label">Gift Nifty Gap Direction</span>
+          <span id="pm-gift" class="metric-value">--</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">India VIX Fear Index</span>
+          <span id="pm-vix" class="metric-value">--</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- FII/DII Flows & Streaks -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">FII / DII Institutional Flows</span>
+        <span id="fii-badge" class="card-badge badge-green">FLAT</span>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+        <div>
+          <div class="metric-row">
+            <span class="metric-label">FII Net Buy/Sell</span>
+            <span id="fii-net" class="metric-value">--</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-label">FII Gross Buy</span>
+            <span id="fii-buy" class="metric-value">--</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-label">FII Gross Sell</span>
+            <span id="fii-sell" class="metric-value">--</span>
+          </div>
+        </div>
+        <div>
+          <div class="metric-row">
+            <span class="metric-label">DII Net Buy/Sell</span>
+            <span id="dii-net" class="metric-value">--</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-label">DII Gross Buy</span>
+            <span id="dii-buy" class="metric-value">--</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-label">DII Gross Sell</span>
+            <span id="dii-sell" class="metric-value">--</span>
+          </div>
+        </div>
+      </div>
+      <div style="background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:12px;">
+        <div style="font-size:11px; text-transform:uppercase; font-family:var(--mono); color:var(--muted); margin-bottom:4px;">Institutional Summary Verdict</div>
+        <div id="fii-verdict" style="font-size:13px; font-weight:500; line-height:1.4;">Waiting for FII/DII API data sync...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Four equal cards overview -->
+  <div class="grid-four">
+    <div class="card" style="padding: 16px 20px;">
+      <span class="card-title" style="font-size: 11px;">Premarket Open</span>
+      <div id="quick-premarket" style="font-size: 20px; font-weight: 700; font-family: var(--mono); color: var(--blue);">NEUTRAL</div>
+      <span style="font-size:11px; color:var(--muted);">Global cues baseline</span>
+    </div>
+    <div class="card" style="padding: 16px 20px;">
+      <span class="card-title" style="font-size: 11px;">FII Streak</span>
+      <div id="quick-fii-streak" style="font-size: 20px; font-weight: 700; font-family: var(--mono); color: var(--green);">0 Days BUY</div>
+      <span style="font-size:11px; color:var(--muted);">Consecutive flow streak</span>
+    </div>
+    <div class="card" style="padding: 16px 20px;">
+      <span class="card-title" style="font-size: 11px;">Earnings Blackouts</span>
+      <div id="quick-blackouts" style="font-size: 20px; font-weight: 700; font-family: var(--mono);">0 Active</div>
+      <span style="font-size:11px; color:var(--muted);">Watchlist tickers locked</span>
+    </div>
+    <div class="card" style="padding: 16px 20px;">
+      <span class="card-title" style="font-size: 11px;">Promoter Deals</span>
+      <div id="quick-promoters" style="font-size: 20px; font-weight: 700; font-family: var(--mono); color: var(--amber);">0 Today</div>
+      <span style="font-size:11px; color:var(--muted);">Insider trades in last 24h</span>
+    </div>
+  </div>
+
+  <!-- Sector Heatmap Rotation Grid -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Sector Rotation Heatmap Matrix</span>
+      <span class="card-badge badge-blue">RS SCORE vs NIFTY50</span>
+    </div>
+    <div style="overflow-x: auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>Rank</th>
+            <th>Sector Name</th>
+            <th>Weekly Return</th>
+            <th>Monthly Return</th>
+            <th>RS Score</th>
+            <th>Momentum</th>
+            <th>Signal</th>
+          </tr>
+        </thead>
+        <tbody id="sector-table-body">
+          <tr>
+            <td colspan="7" style="text-align:center; padding:32px 0; color:var(--muted);">Loading sector heatmap matrix stats...</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Bottom: Upcoming Earnings & Promoter Activities (Half Width Grid) -->
+  <div class="grid-half">
+    <!-- Upcoming Earnings -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Earnings Calendar (This Week)</span>
+        <span class="card-badge badge-warn">Vol Risk</span>
+      </div>
+      <div style="overflow-x: auto; flex: 1;">
+        <table>
+          <thead>
+            <tr>
+              <th>Ticker</th>
+              <th>Result Date</th>
+              <th>Hist. Beat Rate</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="earnings-table-body">
+            <tr>
+              <td colspan="4" style="text-align:center; padding:24px 0; color:var(--muted);">No upcoming announcements this week.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Promoter Deals & SAST Insider Filings -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Promoter &amp; Bulk Deals Activity (Recent)</span>
+        <span class="card-badge badge-green">Insider Signals</span>
+      </div>
+      <div style="overflow-x: auto; flex: 1;">
+        <table>
+          <thead>
+            <tr>
+              <th>Ticker</th>
+              <th>Date</th>
+              <th>Client / Person</th>
+              <th>Action</th>
+              <th>Value</th>
+            </tr>
+          </thead>
+          <tbody id="promoter-table-body">
+            <tr>
+              <td colspan="5" style="text-align:center; padding:24px 0; color:var(--muted);">No recent insider filings logged.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Full Width: Conviction Leaderboard -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Conviction Leaderboard (Top Scanner Candidates)</span>
+      <span class="card-badge badge-green">AI Breakout Ranking</span>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:12px;" id="leaderboard-container">
+      <div style="text-align:center; padding:40px 0; color:var(--muted);">
+        No setups analyzed today. Run scanner from the main terminal desk to see conviction leaderboard setups.
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API_URL = "http://127.0.0.1:8000/api";
+
+// Fetch Premarket Score
+async function loadPremarket() {
+  try {
+    const r = await fetch(`${API_URL}/premarket`);
+    const data = await r.json();
+    const pm = data.data || {};
+    
+    document.getElementById("pm-score").innerText = (pm.pre_market_score || 50).toFixed(0);
+    document.getElementById("pm-class").innerText = (pm.classification || "NEUTRAL_OPEN").replace('_', ' ');
+    document.getElementById("pm-rec").innerText = pm.recommendation || "Default rangebound open expected.";
+    document.getElementById("pm-gift").innerText = `${pm.gift_nifty_gap >= 0 ? '+' : ''}${Number(pm.gift_nifty_gap || 0).toFixed(2)}%`;
+    document.getElementById("pm-vix").innerText = Number(pm.india_vix || 15).toFixed(2);
+    
+    // Set Badge Color
+    const badge = document.getElementById("pm-badge");
+    badge.innerText = pm.classification || "NEUTRAL";
+    if (pm.pre_market_score >= 75) {
+      badge.className = "card-badge badge-green";
+      document.getElementById("quick-premarket").style.color = "var(--green)";
+    } else if (pm.pre_market_score >= 55) {
+      badge.className = "card-badge badge-green";
+      document.getElementById("quick-premarket").style.color = "var(--green)";
+    } else if (pm.pre_market_score < 25) {
+      badge.className = "card-badge badge-red";
+      document.getElementById("quick-premarket").style.color = "var(--red)";
+    } else if (pm.pre_market_score < 45) {
+      badge.className = "card-badge badge-red";
+      document.getElementById("quick-premarket").style.color = "var(--red)";
+    } else {
+      badge.className = "card-badge badge-blue";
+      document.getElementById("quick-premarket").style.color = "var(--blue)";
+    }
+    document.getElementById("quick-premarket").innerText = (pm.classification || "NEUTRAL_OPEN").split('_')[0];
+  } catch(e) {
+    console.error("Error loading premarket signals:", e);
+  }
+}
+
+// Fetch FII flows
+async function loadFiiFlows() {
+  try {
+    const r = await fetch(`${API_URL}/fii/latest`);
+    const data = await r.json();
+    const fii = data.data || {};
+    
+    document.getElementById("fii-net").innerText = `${fii.fii_net >= 0 ? '+' : ''}${fii.fii_net.toFixed(1)} Cr`;
+    document.getElementById("fii-net").className = `metric-value ${fii.fii_net >= 0 ? 'green' : 'red'}`;
+    document.getElementById("fii-buy").innerText = `${fii.fii_buy.toFixed(1)} Cr`;
+    document.getElementById("fii-sell").innerText = `${fii.fii_sell.toFixed(1)} Cr`;
+
+    document.getElementById("dii-net").innerText = `${fii.dii_net >= 0 ? '+' : ''}${fii.dii_net.toFixed(1)} Cr`;
+    document.getElementById("dii-net").className = `metric-value ${fii.dii_net >= 0 ? 'green' : 'red'}`;
+    document.getElementById("dii-buy").innerText = `${fii.dii_buy.toFixed(1)} Cr`;
+    document.getElementById("dii-sell").innerText = `${fii.dii_sell.toFixed(1)} Cr`;
+
+    document.getElementById("fii-verdict").innerText = fii.signal_text || "Flat FII flows.";
+    
+    const badge = document.getElementById("fii-badge");
+    badge.innerText = fii.market_impact || "NEUTRAL";
+    if (fii.fii_net > 500) badge.className = "card-badge badge-green";
+    else if (fii.fii_net < -500) badge.className = "card-badge badge-red";
+    else badge.className = "card-badge badge-blue";
+    
+    document.getElementById("quick-fii-streak").innerText = `${fii.streak_days} Days ${fii.streak_type}`;
+    document.getElementById("quick-fii-streak").style.color = fii.streak_type === 'BUY' ? 'var(--green)' : (fii.streak_type === 'SELL' ? 'var(--red)' : 'var(--muted)');
+  } catch(e) {
+    console.error("Error loading FII flows:", e);
+  }
+}
+
+// Fetch Sector rankings
+async function loadSectors() {
+  try {
+    const r = await fetch(`${API_URL}/sectors/rankings`);
+    const data = await r.json();
+    const list = data.data || [];
+    
+    const body = document.getElementById("sector-table-body");
+    if (!list.length) {
+      body.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:20px 0; color:var(--muted);">No sectors loaded. Run refresh_sector_data job.</td></tr>`;
+      return;
+    }
+    
+    body.innerHTML = list.map(sec => {
+      let sigClass = 'badge-blue';
+      if (sec.signal === 'LEAD') sigClass = 'badge-green';
+      else if (sec.signal === 'LAGGING') sigClass = 'badge-red';
+      
+      let momColor = 'var(--text)';
+      if (sec.momentum === 'RISING') momColor = 'var(--green)';
+      else if (sec.momentum === 'FALLING') momColor = 'var(--red)';
+      
+      const sign = sec.weekly_return >= 0 ? '+' : '';
+      const signM = sec.monthly_return >= 0 ? '+' : '';
+
+      return `
+        <tr>
+          <td style="font-family:var(--mono); font-weight:700;">#${sec.rank}</td>
+          <td style="font-weight:600;">${sec.sector}</td>
+          <td style="font-family:var(--mono); color:${sec.weekly_return >= 0 ? 'var(--green)' : 'var(--red)'}">${sign}${sec.weekly_return.toFixed(2)}%</td>
+          <td style="font-family:var(--mono); color:${sec.monthly_return >= 0 ? 'var(--green)' : 'var(--red)'}">${signM}${sec.monthly_return.toFixed(2)}%</td>
+          <td style="font-family:var(--mono); font-weight:600;">${sec.rs_score.toFixed(2)}</td>
+          <td style="font-family:var(--mono); font-weight:600; color:${momColor}">${sec.momentum}</td>
+          <td><span class="card-badge ${sigClass}">${sec.signal}</span></td>
+        </tr>
+      `;
+    }).join('');
+  } catch(e) {
+    console.error("Error loading sector rotation matrix:", e);
+  }
+}
+
+// Fetch Upcoming Earnings Calendar
+async function loadEarnings() {
+  try {
+    const r = await fetch(`${API_URL}/earnings/upcoming`);
+    const data = await r.json();
+    const list = data.data || [];
+    
+    const body = document.getElementById("earnings-table-body");
+    
+    // Count active blackouts
+    let activeBlackouts = 0;
+    
+    if (!list.length) {
+      body.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:20px 0; color:var(--muted);">No upcoming earnings this week.</td></tr>`;
+      document.getElementById("quick-blackouts").innerText = "0 Active";
+      return;
+    }
+    
+    body.innerHTML = list.map(earn => {
+      const beatRate = (earn.beat_rate * 100).toFixed(0);
+      
+      // Calculate blackout
+      const today = new Date();
+      const resDate = new Date(earn.result_date);
+      const diff = Math.ceil((resDate - today) / (1000 * 60 * 60 * 24));
+      
+      let statusHtml = '<span class="card-badge badge-blue">UPCOMING</span>';
+      if (diff >= -1 && diff <= 3) {
+        statusHtml = '<span class="card-badge badge-red">BLACKOUT ACTIVE</span>';
+        activeBlackouts++;
+      }
+
+      return `
+        <tr>
+          <td style="font-weight:600; font-family:var(--mono);">${earn.ticker.replace('.NS','')}</td>
+          <td>${earn.result_date}</td>
+          <td style="font-family:var(--mono); font-weight:600;">${beatRate}% Beats</td>
+          <td>${statusHtml}</td>
+        </tr>
+      `;
+    }).join('');
+    
+    document.getElementById("quick-blackouts").innerText = `${activeBlackouts} Active`;
+    document.getElementById("quick-blackouts").style.color = activeBlackouts > 0 ? 'var(--red)' : 'var(--text)';
+  } catch(e) {
+    console.error("Error loading earnings calendar:", e);
+  }
+}
+
+// Fetch Recent Promoter Activity
+async function loadPromoters() {
+  try {
+    const r = await fetch(`${API_URL}/promoters/recent`);
+    const data = await r.json();
+    const list = data.data || [];
+    
+    const body = document.getElementById("promoter-table-body");
+    
+    // Count today's transactions
+    let todayDeals = 0;
+    const todayStr = new Date().toISOString().split('T')[0];
+    
+    if (!list.length) {
+      body.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:20px 0; color:var(--muted);">No recent insider transactions.</td></tr>`;
+      document.getElementById("quick-promoters").innerText = "0 Today";
+      return;
+    }
+    
+    body.innerHTML = list.slice(0, 8).map(deal => {
+      if (deal.date === todayStr) {
+        todayDeals++;
+      }
+      
+      let actionClass = 'badge-blue';
+      if (deal.transaction_type === 'BUY') actionClass = 'badge-green';
+      else if (deal.transaction_type === 'SELL') actionClass = 'badge-red';
+      
+      return `
+        <tr>
+          <td style="font-weight:600; font-family:var(--mono);">${deal.ticker.replace('.NS','')}</td>
+          <td>${deal.date || 'Today'}</td>
+          <td style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${deal.person_name}">${deal.person_name}</td>
+          <td><span class="card-badge ${actionClass}">${deal.classification || deal.transaction_type}</span></td>
+          <td style="font-family:var(--mono); font-weight:600;">₹${deal.value_crore.toFixed(2)} Cr</td>
+        </tr>
+      `;
+    }).join('');
+    
+    document.getElementById("quick-promoters").innerText = todayDeals;
+  } catch(e) {
+    console.error("Error loading promoter transactions:", e);
+  }
+}
+
+// Load Conviction Leaderboard from last run scan
+async function loadLeaderboard() {
+  try {
+    const r = await fetch(`${API_URL}/scan`);
+    const data = await r.json();
+    const candidates = data.data || [];
+    
+    const container = document.getElementById("leaderboard-container");
+    if (!candidates.length) {
+      container.innerHTML = `
+        <div style="text-align:center; padding:40px 0; color:var(--muted);">
+          No active breakout setups found. Run scan on the main terminal desk to refresh.
+        </div>
+      `;
+      return;
+    }
+    
+    container.innerHTML = candidates.map(stock => {
+      let gradeClass = 'badge-blue';
+      if (stock.conviction_grade === 'A+' || stock.conviction_grade === 'A') gradeClass = 'badge-green';
+      else if (stock.conviction_grade === 'B') gradeClass = 'badge-blue';
+      else if (stock.conviction_grade === 'C') gradeClass = 'badge-warn';
+      else gradeClass = 'badge-red';
+      
+      const bd = stock.score_breakdown || { technical: 0, ml: 0, macro: 0, news: 0, fundamental: 0 };
+      
+      return `
+        <div class="leaderboard-item">
+          <div>
+            <span style="font-family:var(--mono); font-weight:700; font-size:16px; color:var(--green);">${stock.ticker.replace('.NS','')}</span>
+            <div style="font-size:11px; color:var(--muted);">Trigger: ₹${stock.price.toFixed(2)}</div>
+          </div>
+          <div>
+            <span class="card-badge ${gradeClass}">${stock.conviction_grade} (${stock.conviction_score.toFixed(0)})</span>
+          </div>
+          <div class="breakdown-bars">
+            <div class="breakdown-segment" title="Technical: ${bd.technical}/30">
+              <div class="breakdown-fill tech" style="width: ${bd.technical/30*100}%"></div>
+              <span class="tooltip-text">Tech: ${bd.technical}</span>
+            </div>
+            <div class="breakdown-segment" title="ML Forecast: ${bd.ml}/25">
+              <div class="breakdown-fill ml" style="width: ${bd.ml/25*100}%"></div>
+              <span class="tooltip-text">ML: ${bd.ml}</span>
+            </div>
+            <div class="breakdown-segment" title="Macro Vol: ${bd.macro}/20">
+              <div class="breakdown-fill macro" style="width: ${bd.macro/20*100}%"></div>
+              <span class="tooltip-text">Macro: ${bd.macro}</span>
+            </div>
+            <div class="breakdown-segment" title="Sentiment: ${bd.news}/15">
+              <div class="breakdown-fill news" style="width: ${bd.news/15*100}%"></div>
+              <span class="tooltip-text">News: ${bd.news}</span>
+            </div>
+            <div class="breakdown-segment" title="Fundamentals: ${bd.fundamental}/10">
+              <div class="breakdown-fill fund" style="width: ${bd.fundamental/10*100}%"></div>
+              <span class="tooltip-text">Fund: ${bd.fundamental}</span>
+            </div>
+          </div>
+          <div style="font-family:var(--mono); font-size:12px; color:var(--muted); text-align:right;">
+            RVOL: ${stock.rvol.toFixed(1)}x
+          </div>
+          <div>
+            <button onclick="window.location.href='/?ticker=${stock.ticker}#analytics'" class="btn" style="padding:4px 8px; font-size:10px;">
+              Trade
+            </button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  } catch(e) {
+    console.error("Error loading conviction leaderboard:", e);
+  }
+}
+
+async function loadIntelligenceStatus() {
+  try {
+    const r = await fetch(`${API_URL}/intelligence/status`);
+    const res = await r.json();
+    if (res.status === 'success' && res.data) {
+      const data = res.data;
+      updateStatusDot("dot-fii", data.fii.status);
+      updateStatusDot("dot-sectors", data.sectors.status);
+      updateStatusDot("dot-premarket", data.premarket.status);
+      updateStatusDot("dot-earnings", data.earnings.status);
+      updateStatusDot("dot-promoters", data.promoters.status);
+    }
+  } catch(e) {
+    console.error("Error loading intelligence status:", e);
+  }
+}
+
+function updateStatusDot(elementId, status) {
+  const el = document.getElementById(elementId);
+  if (!el) return;
+  if (status === 'FRESH') {
+    el.style.background = 'var(--green)';
+  } else if (status === 'STALE') {
+    el.style.background = 'var(--amber)';
+  } else {
+    el.style.background = 'var(--red)';
+  }
+}
+
+async function triggerIntelligenceRefresh() {
+  const btn = document.getElementById("btn-refresh-all");
+  btn.innerText = "Refreshing...";
+  btn.disabled = true;
+  try {
+    const r = await fetch(`${API_URL}/intelligence/refresh`, { method: 'POST' });
+    const res = await r.json();
+    // Wait for the background processes to do some work before refetching
+    setTimeout(() => {
+      loadIntelligenceStatus();
+      loadPremarket();
+      loadFiiFlows();
+      loadSectors();
+      loadEarnings();
+      loadPromoters();
+      loadLeaderboard();
+      btn.innerText = "↻ Refresh All";
+      btn.disabled = false;
+    }, 3000);
+  } catch(e) {
+    console.error("Error triggering refresh:", e);
+    btn.innerText = "↻ Refresh All";
+    btn.disabled = false;
+  }
+}
+
+// Initial Loading
+loadIntelligenceStatus();
+loadPremarket();
+loadFiiFlows();
+loadSectors();
+loadEarnings();
+loadPromoters();
+loadLeaderboard();
+
+// Refresh every 60 seconds
+setInterval(() => {
+  loadIntelligenceStatus();
+  loadPremarket();
+  loadFiiFlows();
+  loadSectors();
+  loadEarnings();
+  loadPromoters();
+  loadLeaderboard();
+}, 60000);
+</script>
+
+</body>
+</html>
