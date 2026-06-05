@@ -76,15 +76,27 @@ class BULLPaperBroker:
             json.dump(data, f, indent=4)
 
     def log_engine_signal(self, ticker: str, price: float, ml_score: float, rsi: float, rvol: float):
+        """Log an equity scanner signal to the local paper signal journal."""
         signal = {
             "timestamp": datetime.datetime.now().isoformat(),
             "ticker": ticker,
             "price": price,
             "ml_score": ml_score,
             "rsi": rsi,
-            "rvol": rvol
+            "rvol": rvol,
+            "decision": "TRADE",
+            "asset_class_id": "nifty50_equity",
+            "instrument_type": "equity_cash",
         }
         self.signals.append(signal)
+        self._save_data(SIGNALS_FILE, self.signals)
+
+    def log_signal(self, signal: dict):
+        """Log any BULL-generated signal across asset classes."""
+        record = dict(signal)
+        record.setdefault("timestamp", datetime.datetime.now().isoformat())
+        record.setdefault("decision", "WATCH" if record.get("watch_only") else "TRADE")
+        self.signals.append(record)
         self._save_data(SIGNALS_FILE, self.signals)
 
     def execute_trade(self, ticker: str, entry_price: float, atr: float, ml_score: float) -> dict:

@@ -32,7 +32,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -42,7 +42,9 @@ from pydantic import BaseModel
 # Source module imports — all business logic lives here, NOT in this file.
 # ---------------------------------------------------------------------------
 from src import database, engine, backtest, market, news, fetcher, research, utils, sentiment, news_analyst, paper_analytics  # noqa: F401
+from src.fno_engine import scan_fno_watchlist
 from src.logger import get_logger
+from src.universe_engine import compute_skill_gate, get_opportunity_counts, get_universe_payload
 
 logger = get_logger(__name__)
 
@@ -578,6 +580,38 @@ async def get_research_setups(date: Optional[str] = Query(None)):
         return df.to_dict(orient="records")
     except Exception as exc:
         return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+# ---- Market Universe -----------------------------------------------
+@app.get("/api/universe")
+async def universe_registry():
+    """Return asset registry, skill gate, and opportunity counts."""
+    return {"status": "success", "data": get_universe_payload(database.DB_PATH)}
+
+
+@app.get("/api/universe/counts")
+async def universe_counts():
+    """Return 24-hour opportunity counts by asset class."""
+    return {"status": "success", "counts": get_opportunity_counts(database.DB_PATH)}
+
+
+@app.get("/api/universe/skill_gate")
+async def universe_skill_gate():
+    """Return the honest BULL skill gate state."""
+    return {"status": "success", "skill_gate": compute_skill_gate(database.DB_PATH)}
+
+
+@app.get("/api/fno/watchlist")
+async def fno_watchlist(force_refresh: bool = False):
+    """Return watch-only F&O and commodity setups."""
+    return {"status": "success", "setups": scan_fno_watchlist(force_refresh=force_refresh)}
+
+
+@app.post("/api/universe/scan_all")
+async def universe_scan_all(background_tasks: BackgroundTasks):
+    """Trigger full universe scan; Tier 2 remains watch-only."""
+    background_tasks.add_task(scan_fno_watchlist, True)
+    return {"status": "scheduled", "message": "Universe scan scheduled. Tier 2 remains WATCH only."}
 
 
 # ===================================================================

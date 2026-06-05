@@ -279,6 +279,9 @@
   .card-badge.green { background: var(--green-dim); color: var(--green); }
   .card-badge.amber { background: var(--amber-dim); color: var(--amber); }
   .card-badge.blue { background: var(--blue-dim); color: var(--blue); }
+  .card-badge.red { background: var(--red-dim); color: var(--red); }
+  .card-badge.cyan { background: rgba(137,221,255,0.12); color: #89ddff; }
+  .card-badge.purple { background: rgba(199,146,234,0.12); color: #c792ea; }
 
   /* ── PnL Curve ── */
   .chart-wrap { position: relative; width: 100%; height: 220px; }
@@ -459,6 +462,43 @@
   .scan-card:hover {
     border-color: var(--border2);
   }
+  .watch-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 2px solid var(--amber);
+    border-radius: 10px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .watch-card:hover { border-color: var(--border2); }
+  .watch-title { font-family: var(--mono); font-weight: 700; font-size: 15px; color: var(--text); }
+  .watch-note { color: var(--muted); font-size: 12px; line-height: 1.6; }
+  .watch-warning {
+    color: var(--red);
+    background: var(--red-dim);
+    border: 1px solid rgba(239,68,68,0.22);
+    border-radius: 5px;
+    padding: 8px;
+    font-size: 11px;
+  }
+  .drawer {
+    position: fixed;
+    top: 0;
+    right: -420px;
+    width: min(400px, 92vw);
+    height: 100vh;
+    background: var(--surface);
+    border-left: 1px solid var(--border2);
+    padding: 24px;
+    z-index: 40;
+    transition: right 0.2s ease;
+    box-shadow: -24px 0 60px rgba(0,0,0,0.35);
+  }
+  .drawer.open { right: 0; }
+  .drawer-title { font-family: var(--mono); color: var(--green); font-size: 18px; margin-bottom: 12px; }
+  .drawer-body { color: var(--muted); line-height: 1.7; }
 
   .placeholder-grid {
     display: grid;
@@ -577,6 +617,8 @@
         <button class="nav-item" id="nav-watchlist" onclick="switchTab('watchlist')"><span class="nav-dot"></span>Watchlist</button>
         <button class="nav-item" id="nav-sectors" onclick="switchTab('sectors')"><span class="nav-dot"></span>Sector Leaders</button>
         <button class="nav-item" id="nav-news" onclick="switchTab('news')"><span class="nav-dot"></span>News Swarm</button>
+        <button class="nav-item" onclick="window.location.href='/universe.html'"><span class="nav-dot"></span>Market Universe</button>
+        <button class="nav-item" onclick="scrollFnoWatch()"><span class="nav-dot"></span>F&amp;O Watch</button>
       </div>
       <div class="nav-section">
         <span class="nav-label">Journal</span>
@@ -827,6 +869,16 @@
           </p>
         </div>
       </div>
+      <div class="card full" id="fno-watch-section" style="margin-top:16px;">
+        <div class="card-header">
+          <span class="card-title">F&amp;O &amp; Commodity Watch</span>
+          <span class="card-badge amber" id="fno-watch-badge">WATCH ONLY - Skill Gate Locked</span>
+        </div>
+        <p class="terminal-note" style="margin-bottom:16px;">Tier 2 setups are for learning and observation only. No log-trade button appears here.</p>
+        <div id="fno-watch-container" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(270px,1fr)); gap:16px;">
+          <p style="color:var(--muted); grid-column:1/-1; padding:20px 0;">Loading watch-only derivative and commodity setups...</p>
+        </div>
+      </div>
     </div>
 
     <div class="content tab-content" id="tab-watchlist" style="display: none;">
@@ -958,6 +1010,11 @@
 
   </main>
 </div>
+<aside class="drawer" id="learn-drawer">
+  <button class="filter-btn" onclick="closeLearnDrawer()" style="margin-bottom:18px;">Close</button>
+  <div class="drawer-title" id="drawer-title">Watch setup</div>
+  <div class="drawer-body" id="drawer-body"></div>
+</aside>
 
 <script>
 const API_URL = "http://127.0.0.1:8000/api";
@@ -983,6 +1040,7 @@ const GATES = [
 /* ─── Chart instances ─── */
 let equityChart = null, donutChart = null, monthlyChart = null;
 let ALL_TRADES = [];
+let FNO_WATCH_SETUPS = [];
 const PAGE_TITLES = {
   analytics: 'Analytics',
   premarket: 'Pre-Market Desk',
@@ -1030,6 +1088,9 @@ function switchTab(tabId) {
   }
   if (tabId === 'news') {
     loadNewsSwarm(false);
+  }
+  if (tabId === 'premarket') {
+    loadFnoWatchlist(false);
   }
 }
 
@@ -1358,6 +1419,103 @@ async function loadNewsSwarm(forceRefresh = false) {
     const reasonEl = document.getElementById('news-reason');
     if (reasonEl) reasonEl.textContent = 'News Swarm could not reach the local server.';
   }
+}
+
+function watchBadgeClass(type) {
+  const value = String(type || '').toLowerCase();
+  if (value.includes('commodity')) return 'purple';
+  if (value.includes('option')) return 'cyan';
+  return 'amber';
+}
+
+function renderFnoWatchlist(setups = []) {
+  const container = document.getElementById('fno-watch-container');
+  if (!container) return;
+  FNO_WATCH_SETUPS = setups;
+  if (!setups.length) {
+    container.innerHTML = '<p class="terminal-note" style="grid-column:1/-1;">No F&O or commodity watch setups returned. Tier 2 remains locked.</p>';
+    return;
+  }
+  container.innerHTML = setups.map((setup, index) => {
+    const badge = setup.type_badge || 'WATCH';
+    const className = watchBadgeClass(setup.instrument_type);
+    const title = setup.instrument_name || setup.instrument || 'Watch setup';
+    const note = setup.learn_note || 'Watch-only setup. Do not trade this with real money.';
+    return `
+      <div class="watch-card" style="animation-delay:${index * 80}ms;">
+        <div style="display:flex; justify-content:space-between; gap:10px; align-items:flex-start;">
+          <div>
+            <div class="watch-title">${title}</div>
+            <div style="font-family:var(--mono); color:var(--muted); font-size:11px; margin-top:4px;">${setup.instrument || ''}</div>
+          </div>
+          <span class="card-badge ${className}">${badge}</span>
+        </div>
+        <div class="status-line" style="padding:0 0 8px;">
+          <span class="status-key">Key stat</span>
+          <span class="status-value">${setup.key_stat || 'Watch'}</span>
+        </div>
+        <div class="watch-note">${note}</div>
+        <div class="watch-warning">${setup.sebi_warning || '9 out of 10 F&O traders lose money (SEBI study)'}</div>
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+          <span class="news-gate caution">WATCH ONLY</span>
+          <button class="filter-btn" onclick="openLearnDrawer(${index})">Learn more -&gt;</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function loadFnoWatchlist(forceRefresh = false) {
+  const badge = document.getElementById('fno-watch-badge');
+  const container = document.getElementById('fno-watch-container');
+  if (!badge || !container) return;
+  badge.textContent = forceRefresh ? 'Refreshing WATCH list' : 'WATCH ONLY - Skill Gate Locked';
+  try {
+    const [watchResponse, gateResponse] = await Promise.all([
+      fetch(`${API_URL}/fno/watchlist?force_refresh=${forceRefresh ? 'true' : 'false'}`),
+      fetch(`${API_URL}/universe/skill_gate`)
+    ]);
+    const watchResult = await watchResponse.json();
+    const gateResult = await gateResponse.json();
+    const gate = gateResult.skill_gate || {};
+    const tier2Unlocked = (gate.unlocked_tiers || []).includes(2);
+    badge.textContent = tier2Unlocked ? 'WATCH ONLY - Tier 2 Review Unlocked' : 'WATCH ONLY - Skill Gate Locked';
+    badge.className = `card-badge ${tier2Unlocked ? 'green' : 'amber'}`;
+    renderFnoWatchlist(watchResult.setups || []);
+  } catch (error) {
+    badge.textContent = 'WATCH API Offline';
+    container.innerHTML = '<p class="terminal-note" style="grid-column:1/-1;">F&O Watch could not reach the local server.</p>';
+  }
+}
+
+function openLearnDrawer(index) {
+  const setup = FNO_WATCH_SETUPS[index] || {};
+  const title = setup.instrument_name || setup.instrument || 'Watch setup';
+  const note = setup.learn_note || 'Watch-only setup. Do not trade this with real money.';
+  const drawer = document.getElementById('learn-drawer');
+  document.getElementById('drawer-title').textContent = title;
+  document.getElementById('drawer-body').innerHTML = `
+    <p>${note}</p>
+    <div class="status-list" style="margin-top:18px;">
+      <div class="status-line"><span class="status-key">Decision</span><span class="status-value">${setup.decision || 'WATCH'}</span></div>
+      <div class="status-line"><span class="status-key">Type</span><span class="status-value">${setup.instrument_type || 'watch'}</span></div>
+      <div class="status-line"><span class="status-key">Key stat</span><span class="status-value">${setup.key_stat || '-'}</span></div>
+      <div class="status-line"><span class="status-key">Allowed?</span><span class="status-value">No real orders</span></div>
+    </div>
+    <div class="watch-warning" style="margin-top:18px;">${setup.sebi_warning || '9 out of 10 F&O traders lose money (SEBI study)'}</div>
+  `;
+  drawer.classList.add('open');
+}
+
+function closeLearnDrawer() {
+  document.getElementById('learn-drawer').classList.remove('open');
+}
+
+function scrollFnoWatch() {
+  switchTab('premarket');
+  setTimeout(() => {
+    document.getElementById('fno-watch-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 120);
 }
 
 function renderRDist(closedTrades) {

@@ -8,8 +8,10 @@ import uvicorn
 from engine import BULLSignalEngine
 from paper_broker import BULLPaperBroker
 from src import database
+from src.fno_engine import scan_fno_watchlist
 from src.news import fetch_stock_news
 from src.news_analyst import summarize_ticker_news
+from src.universe_engine import compute_skill_gate, get_opportunity_counts, get_universe_payload
 
 app = FastAPI(title="BULL Stock Terminal Engine")
 
@@ -111,10 +113,39 @@ def _apply_news_gate(candidates):
         candidate["news_events"] = news_report.get("top_events", [])
     return candidates, report
 
+
+def _run_universe_scan_job():
+    """Run all allowed scanners and log every generated signal."""
+    candidates, scan_report = engine.scan_with_report()
+    candidates, _ = _apply_news_gate(candidates)
+    for item in candidates:
+        broker.log_signal({
+            **item,
+            "decision": "TRADE",
+            "asset_class_id": "nifty50_equity",
+            "instrument_type": "equity_cash",
+        })
+    watch_setups = scan_fno_watchlist(force_refresh=True)
+    for item in watch_setups:
+        broker.log_signal(item)
+    return {"tier1": len(candidates), "tier2_watch": len(watch_setups), "scan_report": scan_report}
+
 @app.get("/")
 def serve_dashboard():
     return FileResponse(
         "index.html",
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+        },
+    )
+
+
+@app.get("/universe.html")
+def serve_universe():
+    """Serve the Market Universe Command Center page."""
+    return FileResponse(
+        "universe.html",
         headers={
             "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
             "Pragma": "no-cache",
@@ -142,6 +173,37 @@ def get_news_swarm(force_refresh: bool = False):
 @app.get("/api/feed/status")
 def get_feed_status():
     return {"status": "success", "feed": engine.feed_health()}
+
+
+@app.get("/api/universe")
+def get_universe():
+    """Return asset registry, skill gate, and opportunity counts."""
+    return {"status": "success", "data": get_universe_payload(database.DB_PATH)}
+
+
+@app.get("/api/universe/counts")
+def get_universe_counts():
+    """Return 24-hour opportunity counts by asset class."""
+    return {"status": "success", "counts": get_opportunity_counts(database.DB_PATH)}
+
+
+@app.get("/api/universe/skill_gate")
+def get_universe_skill_gate():
+    """Return the honest BULL skill gate state."""
+    return {"status": "success", "skill_gate": compute_skill_gate(database.DB_PATH)}
+
+
+@app.get("/api/fno/watchlist")
+def get_fno_watchlist(force_refresh: bool = False):
+    """Return watch-only F&O and commodity setups."""
+    return {"status": "success", "setups": scan_fno_watchlist(force_refresh=force_refresh)}
+
+
+@app.post("/api/universe/scan_all")
+def scan_all_universe(background_tasks: BackgroundTasks):
+    """Trigger a full universe scan and log Tier 1 trade plus Tier 2 watch signals."""
+    background_tasks.add_task(_run_universe_scan_job)
+    return {"status": "scheduled", "message": "Full universe scan started. Tier 2 remains WATCH only."}
 
 @app.post("/api/trade/execute")
 def execute_trade(ticker: str, price: float, atr: float, ml_score: float):
