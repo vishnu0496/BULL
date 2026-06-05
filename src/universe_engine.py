@@ -280,7 +280,27 @@ def get_opportunity_counts(db_path: str | None = None) -> dict:
 def compute_skill_gate(db_path: str | None = None) -> dict:
     """Compute the honest paper-trading skill gate from local signal and trade logs."""
     del db_path
-    trades = _load_json(TRADES_FILE, [])
+    
+    # Try loading from database first
+    trades = []
+    try:
+        from src.paper_analytics import get_paper_trade_analytics
+        analytics = get_paper_trade_analytics()
+        closed_trades = analytics.get("closed_trades", [])
+        for ct in closed_trades:
+            trades.append({
+                "status": "CLOSED",
+                "entry_time": ct.get("entry_date") + "T00:00:00",
+                "exit_time": ct.get("exit_date") + "T00:00:00",
+                "pnl": ct.get("pnl", 0.0),
+                "r_multiple": ct.get("r_multiple")
+            })
+    except Exception as e:
+        print(f"[Universe Engine] Error loading trades from SQLite: {e}")
+        
+    if not trades:
+        trades = _load_json(TRADES_FILE, [])
+        
     signals = _load_json(SIGNALS_FILE, [])
     cutoff = datetime.now() - timedelta(days=90)
     closed = []

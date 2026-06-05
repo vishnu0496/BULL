@@ -542,6 +542,20 @@ def get_portfolio_holdings():
             unrealized_pnl = current_value - total_cost
             unrealized_pnl_pct = (unrealized_pnl / total_cost * 100) if total_cost > 0 else 0.0
 
+            import re
+            stop_loss = None
+            ticker_trades = trades_df[(trades_df['ticker'].str.upper() == ticker.upper()) & (trades_df['action'].str.upper() == 'BUY')]
+            if not ticker_trades.empty:
+                latest_buy = ticker_trades.iloc[-1]
+                notes = latest_buy.get('notes', '')
+                if notes:
+                    stop_match = re.search(r"Stop Loss:\s*([\d\.]+)", notes)
+                    if stop_match:
+                        stop_loss = float(stop_match.group(1))
+            
+            if stop_loss is None:
+                stop_loss = h['avg_cost'] * 0.98
+
             active_holdings.append({
                 'ticker': ticker,
                 'shares': h['shares'],
@@ -552,7 +566,8 @@ def get_portfolio_holdings():
                 'current_value': current_value,
                 'unrealized_pnl': unrealized_pnl,
                 'unrealized_pnl_pct': unrealized_pnl_pct,
-                'realized_pnl': h['realized_pnl']
+                'realized_pnl': h['realized_pnl'],
+                'stop_loss': stop_loss
             })
         elif h['realized_pnl'] != 0.0:
             # We want to record tickers that are closed but had realized PnL

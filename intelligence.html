@@ -321,6 +321,70 @@
   .breakdown-segment:hover .tooltip-text {
     display: block;
   }
+
+  /* Educational Tooltips */
+  .edu-tooltip-container {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    cursor: help;
+  }
+  .edu-tooltip-indicator {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.15);
+    color: var(--muted);
+    font-size: 10px;
+    font-weight: bold;
+    cursor: help;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+  }
+  .edu-tooltip-container:hover .edu-tooltip-indicator,
+  .edu-tooltip-indicator:hover {
+    background: var(--accent);
+    color: var(--bg);
+  }
+  .edu-tooltip-text {
+    visibility: hidden;
+    width: 220px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    text-align: left;
+    border-radius: 4px;
+    padding: 10px 12px;
+    position: absolute;
+    z-index: 1001;
+    bottom: 125%;
+    left: 50%;
+    transform: translateX(-50%);
+    opacity: 0;
+    transition: opacity 0.2s, transform 0.2s;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+    font-size: 11px;
+    font-weight: normal;
+    line-height: 1.45;
+    pointer-events: none;
+    white-space: normal;
+  }
+  .edu-tooltip-container:hover .edu-tooltip-text {
+    visibility: visible;
+    opacity: 1;
+    transform: translateX(-50%) translateY(-4px);
+  }
+  @media (max-width: 900px) {
+    .edu-tooltip-text.active {
+      visibility: visible;
+      opacity: 1;
+      transform: translateX(-50%) translateY(-4px);
+    }
+  }
 </style>
 </head>
 <body>
@@ -391,7 +455,11 @@
     <!-- FII/DII Flows & Streaks -->
     <div class="card">
       <div class="card-header">
-        <span class="card-title">FII / DII Institutional Flows</span>
+        <span class="card-title edu-tooltip-container" style="cursor: help;">
+          FII / DII Institutional Flows
+          <span class="edu-tooltip-indicator">?</span>
+          <span class="edu-tooltip-text">FII (Foreign Institutional Investors) and DII (Domestic Institutional Investors) represent smart money flows. Net positive FII suggests foreign confidence/liquidity inflowing.</span>
+        </span>
         <span id="fii-badge" class="card-badge badge-green">FLAT</span>
       </div>
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">

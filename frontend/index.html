@@ -122,6 +122,87 @@
     <!-- Toast Container -->
     <div class="toast-container" id="toastContainer"></div>
 
+    <!-- Floating Action Button -->
+    <button class="fab-btn" id="fabBtn" onclick="openFabModal()" title="Log a simulated trade">
+        <span>+</span>
+    </button>
+
+    <!-- Minimal Log Trade Modal -->
+    <div class="modal-backdrop" id="fabModal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3 class="modal-title">LOG A TRADE</h3>
+                <button class="modal-close" onclick="closeFabModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Ticker</label>
+                    <input type="text" id="fabTicker" class="form-input" placeholder="e.g. INFY or INFY.NS" onblur="fetchFabTickerDetails()">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Action</label>
+                    <div style="display: flex; gap: 10px;">
+                        <button type="button" class="btn btn-action active" id="fabActionBuy" onclick="setFabAction('BUY')" style="flex: 1; font-weight: bold; padding: 10px;">BUY</button>
+                        <button type="button" class="btn btn-action" id="fabActionSell" onclick="setFabAction('SELL')" style="flex: 1; font-weight: bold; padding: 10px;">SELL</button>
+                    </div>
+                </div>
+                <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label class="form-label">Price (₹)</label>
+                        <input type="number" id="fabPrice" class="form-input" min="0.01" step="0.01" placeholder="Price">
+                    </div>
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label class="form-label">Quantity</label>
+                        <input type="number" id="fabQty" class="form-input" min="1" value="10" placeholder="Qty">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Stop Loss (₹)</label>
+                    <input type="number" id="fabStopLoss" class="form-input" min="0.01" step="0.01" placeholder="ATR-based suggestion">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" onclick="submitFabTrade()" style="flex: 1;">LOG PAPER TRADE</button>
+                <button class="btn btn-secondary" onclick="closeFabModal()" style="flex: 1;">CANCEL</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Close Position Modal -->
+    <div class="modal-backdrop" id="closePositionModal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3 class="modal-title">CLOSE TRADE</h3>
+                <button class="modal-close" onclick="closeClosePositionModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 8px;">Close <span id="closeShares" style="font-weight: bold; color: var(--text-primary);"></span> shares of <span id="closeTicker" style="font-weight: bold; color: var(--text-primary);"></span>.</p>
+                <div class="form-group">
+                    <label class="form-label">Exit Price (₹)</label>
+                    <input type="number" id="closeExitPrice" class="form-input" min="0.01" step="0.01" oninput="calculateClosePnL()">
+                </div>
+                <div style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px; border: 1px solid var(--border-default); display: flex; flex-direction: column; gap: 8px;">
+                    <div style="display: flex; justify-content: space-between; font-size: 0.8rem;">
+                        <span style="color: var(--text-muted);">Avg Entry Price:</span>
+                        <span id="closeEntryPrice" style="font-weight: bold; color: var(--text-primary);">₹0.00</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 0.8rem;">
+                        <span style="color: var(--text-muted);">Estimated P&L:</span>
+                        <span id="closeEstPnL" style="font-weight: bold;">₹0.00</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 0.8rem;">
+                        <span style="color: var(--text-muted);">R-Multiple:</span>
+                        <span id="closeEstR" style="font-weight: bold;">0.00R</span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-danger" onclick="submitClosePosition()" style="flex: 1; font-weight: bold; background: var(--danger); color: white;">RECORD EXIT</button>
+                <button class="btn btn-secondary" onclick="closeClosePositionModal()" style="flex: 1;">CANCEL</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Scripts -->
     <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
     <script src="/js/app.js?v=perf-2"></script>
@@ -136,5 +217,188 @@
     <script src="/js/pages/fno.js"></script>
     <script src="/js/pages/settings.js"></script>
     <script src="/js/pages/health.js?v=health-fix-1"></script>
+
+    <!-- Modal scripts -->
+    <script>
+        let fabAction = 'BUY';
+        let currentClosePositionData = null;
+
+        function openFabModal() {
+            document.getElementById('fabModal').classList.add('active');
+            document.getElementById('fabTicker').value = '';
+            document.getElementById('fabPrice').value = '';
+            document.getElementById('fabQty').value = '10';
+            document.getElementById('fabStopLoss').value = '';
+            setFabAction('BUY');
+        }
+
+        function closeFabModal() {
+            document.getElementById('fabModal').classList.remove('active');
+        }
+
+        function setFabAction(action) {
+            fabAction = action;
+            const buyBtn = document.getElementById('fabActionBuy');
+            const sellBtn = document.getElementById('fabActionSell');
+            if (action === 'BUY') {
+                buyBtn.classList.add('active');
+                buyBtn.style.background = 'var(--success)';
+                buyBtn.style.color = 'white';
+                buyBtn.style.borderColor = 'var(--success)';
+                sellBtn.classList.remove('active');
+                sellBtn.style.background = '';
+                sellBtn.style.color = '';
+                sellBtn.style.borderColor = '';
+            } else {
+                buyBtn.classList.remove('active');
+                buyBtn.style.background = '';
+                buyBtn.style.color = '';
+                buyBtn.style.borderColor = '';
+                sellBtn.classList.add('active');
+                sellBtn.style.background = 'var(--danger)';
+                sellBtn.style.color = 'white';
+                sellBtn.style.borderColor = 'var(--danger)';
+            }
+        }
+
+        async function fetchFabTickerDetails() {
+            let ticker = document.getElementById('fabTicker').value.trim().toUpperCase();
+            if (!ticker) return;
+            
+            if (!ticker.endsWith('.NS') && !ticker.endsWith('.BO') && !ticker.startsWith('^') && ticker.length <= 6) {
+                ticker = ticker + '.NS';
+                document.getElementById('fabTicker').value = ticker;
+            }
+            
+            try {
+                const idea = await API.get(`/api/ideas/${ticker}`);
+                if (idea && idea.entry_trigger > 0) {
+                    document.getElementById('fabPrice').value = idea.entry_trigger.toFixed(2);
+                    document.getElementById('fabStopLoss').value = idea.stop_loss.toFixed(2);
+                } else {
+                    const prices = await API.get(`/api/prices/${ticker}`);
+                    if (prices && prices.length > 0) {
+                        const latest = prices[prices.length - 1];
+                        document.getElementById('fabPrice').value = latest.close.toFixed(2);
+                        document.getElementById('fabStopLoss').value = (latest.close * 0.98).toFixed(2);
+                    }
+                }
+            } catch (e) {
+                console.warn('Failed to fetch details for fab ticker', e);
+            }
+        }
+
+        async function submitFabTrade() {
+            const ticker = document.getElementById('fabTicker').value.trim().toUpperCase();
+            const price = parseFloat(document.getElementById('fabPrice').value);
+            const qty = parseInt(document.getElementById('fabQty').value, 10);
+            const sl = parseFloat(document.getElementById('fabStopLoss').value);
+            const date = new Date().toISOString().split('T')[0];
+            
+            if (!ticker || isNaN(price) || price <= 0 || isNaN(qty) || qty <= 0 || isNaN(sl) || sl <= 0) {
+                showToast('Please fill all fields correctly.', 'error');
+                return;
+            }
+            
+            const notes = `Stop Loss: ${sl.toFixed(2)} | Manual trade entered via FAB.`;
+            
+            try {
+                await API.post('/api/journal', {
+                    ticker: ticker,
+                    trade_date: date,
+                    action: fabAction,
+                    quantity: qty,
+                    price: price,
+                    notes: notes
+                });
+                
+                if (currentPage === 'journal' && typeof loadJournalData === 'function') {
+                    await loadJournalData();
+                }
+                
+                const cleanSymbol = cleanTicker(ticker);
+                showToast(`${cleanSymbol} logged at ₹${price.toFixed(2)}. Stop loss: ₹${sl.toFixed(2)}. Good luck.`, 'success');
+                
+                closeFabModal();
+                
+                if (currentPage === 'mentor' && typeof renderMentorPicks === 'function') {
+                    API.get('/api/mentor/picks').then(picks => renderMentorPicks(picks));
+                }
+            } catch (err) {
+                showToast('Failed to log trade: ' + err.message, 'error');
+            }
+        }
+
+        // Close Position Modal handlers
+        function closeClosePositionModal() {
+            document.getElementById('closePositionModal').classList.remove('active');
+        }
+
+        function calculateClosePnL() {
+            if (!currentClosePositionData) return;
+            
+            const exitPrice = parseFloat(document.getElementById('closeExitPrice').value) || 0;
+            const { shares, avgCost, stopLoss } = currentClosePositionData;
+            
+            const pnl = (exitPrice - avgCost) * shares;
+            
+            const pnlEl = document.getElementById('closeEstPnL');
+            pnlEl.textContent = formatINR(pnl);
+            pnlEl.style.color = pnl > 0 ? 'var(--success)' : pnl < 0 ? 'var(--danger)' : 'var(--text-primary)';
+            
+            const riskPerShare = avgCost - stopLoss;
+            const totalRisk = riskPerShare * shares;
+            let rMultiple = 0;
+            if (totalRisk > 0) {
+                rMultiple = pnl / totalRisk;
+            }
+            
+            const rEl = document.getElementById('closeEstR');
+            rEl.textContent = rMultiple.toFixed(2) + 'R';
+            rEl.style.color = rMultiple > 0 ? 'var(--success)' : rMultiple < 0 ? 'var(--danger)' : 'var(--text-primary)';
+            
+            currentClosePositionData.pnl = pnl;
+            currentClosePositionData.rMultiple = rMultiple;
+        }
+
+        async function submitClosePosition() {
+            if (!currentClosePositionData) return;
+            
+            const exitPrice = parseFloat(document.getElementById('closeExitPrice').value);
+            const { ticker, shares, pnl, rMultiple } = currentClosePositionData;
+            
+            if (isNaN(exitPrice) || exitPrice <= 0) {
+                showToast('Please enter a valid exit price.', 'error');
+                return;
+            }
+            
+            const today = new Date().toISOString().split('T')[0];
+            const notes = `Exit: ₹${exitPrice.toFixed(2)} | P&L: ₹${pnl.toFixed(2)} | R-Multiple: ${rMultiple.toFixed(2)}R | Closed via Active Holdings.`;
+            
+            try {
+                await API.post('/api/journal', {
+                    ticker: ticker,
+                    trade_date: today,
+                    action: 'SELL',
+                    quantity: shares,
+                    price: exitPrice,
+                    notes: notes
+                });
+                
+                showToast(`Closed position in ${cleanTicker(ticker)} at ₹${exitPrice.toFixed(2)}. P&L: ${formatINR(pnl)} (${rMultiple.toFixed(2)}R)`, 'success');
+                
+                closeClosePositionModal();
+                if (typeof loadJournalData === 'function') {
+                    await loadJournalData();
+                }
+                
+                if (currentPage === 'mentor' && typeof renderMentorPicks === 'function') {
+                    API.get('/api/mentor/picks').then(picks => renderMentorPicks(picks));
+                }
+            } catch (err) {
+                showToast('Failed to close position: ' + err.message, 'error');
+            }
+        }
+    </script>
 </body>
 </html>

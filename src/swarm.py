@@ -539,3 +539,222 @@ if __name__ == "__main__":
         for ticker in tickers[:5]:
             cached = database.get_news_cache(ticker, max_age_hours=24)
             print(f"- {ticker}: {len(cached)} cached items in last 24h")
+
+
+def fetch_overnight_headlines() -> list[str]:
+    import urllib.request
+    import xml.etree.ElementTree as ET
+    import urllib.parse
+    
+    query = "nifty sensex stock market india news"
+    encoded_query = urllib.parse.quote(query)
+    url = f"https://news.google.com/rss/search?q={encoded_query}&hl=en-IN&gl=IN&ceid=IN:en"
+    
+    req = urllib.request.Request(
+        url,
+        headers={
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
+    )
+    
+    headlines = []
+    try:
+        with urllib.request.urlopen(req, timeout=5) as response:
+            xml_data = response.read()
+        root = ET.fromstring(xml_data)
+        items = root.findall('.//item')
+        for item in items[:5]:
+            title = item.find('title').text if item.find('title') is not None else ""
+            if title:
+                # Strip source if format is "Headline - Source"
+                if " - " in title:
+                    title = title.rsplit(" - ", 1)[0]
+                title = title.strip()
+                if title and len(title) > 10:
+                    headlines.append(title)
+                if len(headlines) >= 3:
+                    break
+    except Exception:
+        pass
+        
+    return headlines
+
+def generate_morning_brief() -> str:
+    """
+    Compiles daily market intelligence brief in a phone-readable Markdown format.
+    Wraps all calls in individual try-except clauses to be resilient to partial data outages.
+    """
+    from datetime import datetime
+    now = datetime.now()
+    day_str = now.strftime("%A")
+    date_str = now.strftime("%B %d, %Y")
+    
+    # 1. Premarket Score & Nifty Open Estimator
+    pm_score = 50.0
+    gift_gap = 0.0
+    try:
+        from src.premarket_signals import get_premarket_score
+        pm = get_premarket_score()
+        pm_score = pm.get("pre_market_score", 50.0)
+        gift_gap = pm.get("gift_nifty_gap", 0.0)
+    except Exception:
+        pass
+        
+    if gift_gap > 0.05:
+        nifty_open_direction = "UP"
+    elif gift_gap < -0.05:
+        nifty_open_direction = "DOWN"
+    else:
+        nifty_open_direction = "FLAT"
+    nifty_open_str = f"{nifty_open_direction} ~{abs(gift_gap):.2f}%"
+
+    # 2. Market Mood Logic
+    try:
+        from src.macro_monitor import LATEST_MACRO
+        macro_risk = LATEST_MACRO.get("global_risk", {}).get("level", "MEDIUM")
+        risk_score = LATEST_MACRO.get("global_risk", {}).get("score", 0.0)
+    except Exception:
+        macro_risk = "MEDIUM"
+        risk_score = 0.0
+        
+    high_urgency_neg_news = (macro_risk == "HIGH" or risk_score <= -0.25)
+    
+    if pm_score >= 65 and not high_urgency_neg_news:
+        market_mood = "BULLISH"
+    elif pm_score <= 35 or macro_risk == "HIGH":
+        market_mood = "BEARISH"
+    else:
+        market_mood = "CAUTIOUS"
+
+    # 3. FII Daily Flows
+    fii_net_str = "Data pending"
+    try:
+        from src.fii_tracker import get_fii_signal
+        fii = get_fii_signal()
+        if fii and fii.get("source") != "NONE":
+            fii_net = fii.get("fii_net", 0.0)
+            fii_net_str = f"{fii_net:+.1f} Cr"
+    except Exception:
+        pass
+
+    # 4. Sector Leading Today
+    sector_lead_str = "Data pending"
+    try:
+        from src.sector_rotation import get_sector_rankings
+        sectors = get_sector_rankings()
+        if sectors:
+            top_sector = sectors[0]
+            sector_lead_str = f"{top_sector['sector']} ({top_sector['weekly_return']:+.2f}%)"
+    except Exception:
+        pass
+
+    # 5. Overnight News
+    news_lines = []
+    try:
+        news_lines = fetch_overnight_headlines()
+    except Exception:
+        pass
+    
+    if news_lines:
+        news_str = "\n".join([f"• {line}" for line in news_lines])
+    else:
+        news_str = "No major overnight news. Clean market."
+
+    # 6. Today's Setups
+    setups_str = ""
+    mentor_picks = []
+    try:
+        from src.engine import get_mentor_suggestions
+        mentor_picks = get_mentor_suggestions()
+    except Exception:
+        pass
+        
+    trade_setups = [s for s in mentor_picks if s.get("decision") == "TRADE"]
+    if trade_setups:
+        for s in trade_setups[:3]:
+            ticker_clean = s['ticker'].replace('.NS','')
+            setups_str += f"• {ticker_clean}: Buy above ₹{s['entry_trigger']:.1f} (Conviction: {s['confidence_score']}/100)\n"
+        setups_str = setups_str.strip()
+    else:
+        setups_str = "No A-grade setups today. Cash is a position. Wait."
+
+    # 7. Avoid List Today (Earnings/Promoter Sell/Negative News)
+    avoids = []
+    nifty_leaders = [
+        "RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", "ICICIBANK.NS",
+        "SBIN.NS", "TATAPOWER.NS", "ITC.NS", "LT.NS", "BHARTIARTL.NS",
+        "AXISBANK.NS", "M&M.NS", "MARUTI.NS", "NTPC.NS", "POWERGRID.NS",
+        "COALINDIA.NS", "SUNPHARMA.NS", "HINDALCO.NS", "ONGC.NS"
+    ]
+    try:
+        from src.engine import check_event_blackout
+        for ticker in nifty_leaders:
+            is_blocked, reason = check_event_blackout(ticker)
+            if is_blocked:
+                avoids.append(f"{ticker.replace('.NS','')}: Earnings/Div near")
+    except Exception:
+        pass
+        
+    try:
+        from src.promoter_tracker import get_recent_promoter_activity
+        promoters = get_recent_promoter_activity(days=3)
+        if promoters:
+            for p in promoters:
+                if "SELL" in p.get("transaction_type", "").upper() or "DISPOSAL" in p.get("transaction_type", "").upper():
+                    ticker_clean = p['ticker'].replace('.NS','')
+                    if not any(ticker_clean in a for a in avoids):
+                        avoids.append(f"{ticker_clean}: Promoter selling")
+    except Exception:
+        pass
+        
+    # Add negative sentiment avoids from picks
+    for s in mentor_picks:
+        if s.get("sentiment_label") == "BEARISH":
+            ticker_clean = s['ticker'].replace('.NS','')
+            if not any(ticker_clean in a for a in avoids):
+                avoids.append(f"{ticker_clean}: Negative news sentiment")
+                
+    if avoids:
+        avoid_str = "\n".join([f"• {a}" for a in avoids[:3]])
+    else:
+        avoid_str = "No specific avoids today."
+
+    # 8. Your Paper Trades
+    positions_str = ""
+    try:
+        from src.database import get_portfolio_holdings
+        active_holdings, _ = get_portfolio_holdings()
+        if active_holdings:
+            for pos in active_holdings[:3]:
+                ticker_clean = pos['ticker'].replace('.NS','')
+                pnl = pos['unrealized_pnl']
+                pnl_pct = pos['unrealized_pnl_pct']
+                positions_str += f"• {ticker_clean}: {pos['shares']} sh @ ₹{pos['avg_cost']:.1f} (P&L: {pnl:+.1f} [{pnl_pct:+.1f}%])\n"
+            positions_str = positions_str.strip()
+        else:
+            positions_str = "No open paper trades. Ready to start — log your first setup today."
+    except Exception:
+        positions_str = "No open paper trades. Ready to start — log your first setup today."
+
+    # Build final message text
+    brief_message = (
+        f"🐂 *BULL MORNING BRIEF* — {day_str}, {date_str}\n\n"
+        f"🌏 *MARKET MOOD:* {market_mood}\n"
+        f"• Pre-Market Score: {int(pm_score)}/100\n"
+        f"• Nifty likely open: {nifty_open_str}\n\n"
+        f"💰 *SMART MONEY:*\n"
+        f"• FII yesterday: {fii_net_str}\n"
+        f"• Sector leading today: {sector_lead_str}\n\n"
+        f"📰 *OVERNIGHT NEWS:*\n"
+        f"{news_str}\n\n"
+        f"🎯 *TODAY'S SETUPS:*\n"
+        f"{setups_str}\n\n"
+        f"⚠️ *AVOID TODAY:*\n"
+        f"{avoid_str}\n\n"
+        f"📊 *YOUR PAPER TRADES:*\n"
+        f"{positions_str}\n\n"
+        f"─────────────────────────────────\n"
+        f"🤖 _BULL Intelligence Layer v2_"
+    )
+    return brief_message
+

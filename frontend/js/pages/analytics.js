@@ -64,7 +64,11 @@ function renderPaperAnalytics(container, data) {
                 <div class="metric-note">${summary.winning_trades || 0} wins / ${summary.losing_trades || 0} losses</div>
             </div>
             <div class="metric-card">
-                <div class="metric-label">Average R-Multiple</div>
+                <div class="metric-label tooltip-container">
+                    Average R-Multiple
+                    <span class="tooltip-indicator">?</span>
+                    <span class="tooltip-text">R-Multiple measures your risk-reward ratio. An R-Multiple of 2R means your gain was twice the initial amount risked at your stop-loss.</span>
+                </div>
                 <div class="metric-value ${summary.avg_r_multiple >= 0 ? 'success' : 'danger'}">${avgR}</div>
                 <div class="metric-note">${summary.r_tracked_trades || 0} trades with stop-loss in notes</div>
             </div>

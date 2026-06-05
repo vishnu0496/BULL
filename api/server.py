@@ -71,6 +71,11 @@ class PaperTradeBody(BaseModel):
     notes: str = ""
 
 
+class TelegramSetupBody(BaseModel):
+    token: str
+    chat_id: str
+
+
 class CapitalSettingsBody(BaseModel):
     total_capital: float
     max_risk_per_trade: float
@@ -181,6 +186,27 @@ def _weekly_retraining_job():
     except Exception as e:
         logger.error(f"Weekly scheduled model retraining failed: {e}")
 
+def _morning_brief_job():
+    try:
+        from datetime import datetime
+        from src.constants import is_nse_holiday
+        from notifier import send_morning_brief
+        
+        today = datetime.now()
+        # Monday is 0, Friday is 4, Saturday is 5, Sunday is 6
+        if today.weekday() >= 5:
+            logger.info("[Scheduler] Today is a weekend. Skipping morning brief.")
+            return
+            
+        if is_nse_holiday(today):
+            logger.info("[Scheduler] Today is an NSE holiday. Skipping morning brief.")
+            return
+            
+        logger.info("[Scheduler] Starting morning brief transmission...")
+        send_morning_brief()
+    except Exception as e:
+        logger.error(f"Failed to run morning brief job: {e}")
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize the database and scheduler on startup."""
@@ -207,6 +233,7 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(_morning_mentor_job, "cron", hour=8, minute=0)
     scheduler.add_job(_intraday_news_job, "interval", minutes=2)
     scheduler.add_job(_weekly_retraining_job, "cron", day_of_week="sat", hour=20, minute=0)
+    scheduler.add_job(_morning_brief_job, "cron", day_of_week="mon-fri", hour=8, minute=45)
     scheduler.start()
     
     # Warm the mentor picks cache in the background on startup
@@ -519,6 +546,65 @@ async def add_journal_entry(body: PaperTradeBody):
             body.price,
             body.notes,
         )
+        
+        # Sync to trades_journal.json to keep skill_gate in sync
+        try:
+            from datetime import datetime
+            from paper_broker import BULLPaperBroker
+            broker = BULLPaperBroker(initial_capital=100000.0)
+            from src.paper_broker import parse_targets_from_notes
+            target_1, stop_loss = parse_targets_from_notes(body.notes)
+            
+            # Check if BUY or SELL
+            if body.action.upper() == 'BUY':
+                broker.trades.append({
+                    "trade_id": len(broker.trades) + 1,
+                    "ticker": body.ticker.upper(),
+                    "status": "OPEN",
+                    "entry_time": datetime.utcnow().isoformat() + "Z",
+                    "exit_time": None,
+                    "entry_price": body.price,
+                    "exit_price": None,
+                    "quantity": body.quantity,
+                    "stop_loss": stop_loss or (body.price * 0.98),
+                    "take_profit": target_1 or (body.price * 1.04),
+                    "pnl": 0.0,
+                    "r_multiple": 0.0
+                })
+                broker._save_data("trades_journal.json", broker.trades)
+            elif body.action.upper() == 'SELL':
+                for trade in broker.trades:
+                    if trade["ticker"] == body.ticker.upper() and trade["status"] == "OPEN":
+                        trade["status"] = "CLOSED"
+                        trade["exit_price"] = body.price
+                        trade["exit_time"] = datetime.utcnow().isoformat() + "Z"
+                        pnl = (body.price - trade["entry_price"]) * trade["quantity"]
+                        trade["pnl"] = round(pnl, 2)
+                        risk = (trade["entry_price"] - trade["stop_loss"]) * trade["quantity"]
+                        if risk > 0:
+                            trade["r_multiple"] = round(pnl / risk, 2)
+                        else:
+                            trade["r_multiple"] = 0.0
+                        break
+                broker._save_data("trades_journal.json", broker.trades)
+                
+            # Log to signals_log.json
+            broker.log_signal({
+                "ticker": body.ticker.upper(),
+                "price": body.price,
+                "ml_score": 0.75,
+                "rsi": 55.0,
+                "rvol": 1.5,
+                "stop_loss": stop_loss or (body.price * 0.98),
+                "take_profit": target_1 or (body.price * 1.04),
+                "watch_only": False,
+                "action": body.action.upper(),
+                "quantity": body.quantity,
+                "notes": body.notes
+            })
+        except Exception as e:
+            logger.warning(f"Failed to sync trade/signal to JSON files: {e}")
+            
         return {"success": True}
     except Exception as exc:
         return JSONResponse({"error": str(exc)}, status_code=500)
@@ -617,6 +703,87 @@ async def universe_scan_all(background_tasks: BackgroundTasks):
 # ===================================================================
 #  FRONTEND STATIC FILES  —  mounted AFTER all /api routes
 # ===================================================================
+
+# ---- Setup Wizard --------------------------------------------------
+@app.get("/setup")
+async def serve_setup():
+    setup_path = os.path.join(FRONTEND_DIR, "setup.html")
+    if os.path.isfile(setup_path):
+        return FileResponse(
+            setup_path,
+            headers={
+                "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                "Pragma": "no-cache",
+            },
+        )
+    return JSONResponse(
+        {"error": "setup.html not found. Place setup.html in the frontend/ directory."},
+        status_code=404,
+    )
+
+
+@app.get("/setup/detect_chat_id")
+async def detect_chat_id(token: str):
+    import requests
+    url = f"https://api.telegram.org/bot{token}/getUpdates"
+    try:
+        resp = await _run_sync(requests.get, url, timeout=8)
+        if resp.status_code == 200:
+            res_data = resp.json()
+            if res_data.get("ok"):
+                result = res_data.get("result", [])
+                if result:
+                    # Find the latest message to get chat id
+                    for item in reversed(result):
+                        message = item.get("message") or item.get("edited_message") or item.get("channel_post")
+                        if message and "chat" in message:
+                            return {"success": True, "chat_id": str(message["chat"]["id"])}
+                return {"success": False, "error": "No messages found. Please message your bot first."}
+            return {"success": False, "error": f"Telegram API error: {res_data.get('description')}"}
+        return {"success": False, "error": f"HTTP error {resp.status_code}"}
+    except Exception as e:
+        return {"success": False, "error": f"Connection error: {str(e)}"}
+
+
+@app.post("/setup/test_message")
+async def setup_test_message(body: TelegramSetupBody):
+    import requests
+    url = f"https://api.telegram.org/bot{body.token}/sendMessage"
+    payload = {
+        "chat_id": body.chat_id,
+        "text": "🐂 BULL is connected. Good morning.",
+        "parse_mode": "Markdown"
+    }
+    try:
+        resp = await _run_sync(requests.post, url, json=payload, timeout=8)
+        if resp.status_code == 200:
+            return {"success": True}
+        return {"success": False, "error": resp.text}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/setup/save")
+async def setup_save_config(body: TelegramSetupBody):
+    try:
+        env_path = os.path.join(PROJECT_ROOT, ".env")
+        # Write to .env
+        with open(env_path, "w", encoding="utf-8") as f:
+            f.write(f"TELEGRAM_BOT_TOKEN={body.token}\n")
+            f.write(f"TELEGRAM_CHAT_ID={body.chat_id}\n")
+        
+        # Load into os.environ immediately
+        os.environ["TELEGRAM_BOT_TOKEN"] = body.token
+        os.environ["TELEGRAM_CHAT_ID"] = body.chat_id
+        
+        # Also sync notifier in-memory token config
+        from notifier import load_env_file as reload_notifier_env
+        reload_notifier_env()
+        
+        return {"success": True}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
 
 # Root path → serve index.html
 @app.get("/")

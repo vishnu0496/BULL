@@ -231,7 +231,7 @@ function renderHoldings(holdings) {
                 <td class="text-right text-bold ${pnlColor}">${formatINR(h.unrealized_pnl)}</td>
                 <td class="text-right text-bold ${pnlColor}">${formatPct(h.unrealized_pnl_pct)}</td>
                 <td class="text-right">
-                    <button class="btn btn-danger btn-sm" onclick="closePosition('${h.ticker}', ${h.shares}, ${h.latest_price})">Close</button>
+                    <button class="btn btn-danger btn-sm" onclick="closePosition('${h.ticker}', ${h.shares}, ${h.latest_price}, ${h.avg_cost}, ${h.stop_loss})">Close</button>
                 </td>
             </tr>
         `;
@@ -320,23 +320,24 @@ function exportJournalCSV() {
     document.body.removeChild(a);
 }
 
-window.closePosition = async function(ticker, shares, currentPrice) {
-    if (!confirm(`Are you sure you want to close your position in ${cleanTicker(ticker)} by selling all ${shares} shares at ₹${currentPrice.toFixed(2)}?`)) {
-        return;
-    }
-    try {
-        const today = new Date().toISOString().split('T')[0];
-        await API.post('/api/journal', {
-            ticker: ticker,
-            trade_date: today,
-            action: 'SELL',
-            quantity: shares,
-            price: currentPrice,
-            notes: 'Manually closed position via Active Holdings tab.'
-        });
-        showToast(`Successfully closed position in ${cleanTicker(ticker)} by selling ${shares} shares.`, 'success');
-        await loadJournalData();
-    } catch (err) {
-        showToast('Failed to close position: ' + err.message, 'error');
+window.closePosition = function(ticker, shares, currentPrice, avgCost, stopLoss) {
+    window.currentClosePositionData = {
+        ticker: ticker,
+        shares: shares,
+        avgCost: avgCost,
+        stopLoss: stopLoss || (avgCost * 0.98),
+        pnl: 0,
+        rMultiple: 0
+    };
+    
+    document.getElementById('closeShares').textContent = shares;
+    document.getElementById('closeTicker').textContent = cleanTicker(ticker);
+    document.getElementById('closeExitPrice').value = currentPrice.toFixed(2);
+    document.getElementById('closeEntryPrice').textContent = formatINR(avgCost);
+    
+    document.getElementById('closePositionModal').classList.add('active');
+    
+    if (typeof calculateClosePnL === 'function') {
+        calculateClosePnL();
     }
 };

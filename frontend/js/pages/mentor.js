@@ -120,13 +120,21 @@ function renderMentorPicks(picks) {
 
                 <div class="confidence-bar mt-8">
                     <div class="flex justify-between items-center mb-8">
-                        <div class="confidence-label" style="margin:0; font-family: monospace;">XGBoost Predictor: Probability of Target</div>
+                        <div class="confidence-label tooltip-container" style="margin:0; font-family: monospace; cursor: help;">
+                            XGBoost Predictor: Probability of Target
+                            <span class="tooltip-indicator">?</span>
+                            <span class="tooltip-text">XGBoost is a machine learning ensemble that processes 26 technical indicators (RSI, ATR, RVOL, etc.) to estimate the probability of hitting target before stop-loss.</span>
+                        </div>
                         <div style="font-size:1.2rem; font-weight:800; color:${decColor}">${((idea.ml_probability || 0) * 100).toFixed(1)}%</div>
                     </div>
                     
                     <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px; margin-bottom:12px; background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px;">
                         <div>
-                            <div style="font-size:0.65rem; color:var(--text-muted); text-transform:uppercase;">Kelly Criterion (Optimal Risk)</div>
+                            <div class="tooltip-container" style="font-size:0.65rem; color:var(--text-muted); text-transform:uppercase; cursor: help; display: inline-flex; align-items: center; gap: 4px;">
+                                Kelly Criterion (Optimal Risk)
+                                <span class="tooltip-indicator">?</span>
+                                <span class="tooltip-text">Kelly Criterion calculates the optimal fraction of capital to risk per trade to maximize long-term compound growth based on win-rate and risk-reward ratio.</span>
+                            </div>
                             <div style="font-size:0.85rem; font-weight:700; color:var(--text-primary);">${((idea.kelly_pct || 0) * 100).toFixed(2)}% of Capital</div>
                         </div>
                         <div>

@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BULL Telegram Setup</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-base: #060a13;
+            --bg-surface: rgba(15, 23, 42, 0.65);
+            --bg-surface-hover: rgba(15, 23, 42, 0.85);
+            --bg-elevated: rgba(17, 24, 39, 0.75);
+            --border-default: rgba(255, 255, 255, 0.08);
+            --text-primary: #F1F5F9;
+            --text-secondary: #94A3B8;
+            --text-muted: #64748B;
+            --accent: #38BDF8;
+            --success: #10B981;
+            --danger: #F43F5E;
+            --warning: #F59E0B;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-base);
+            color: var(--text-primary);
+            margin: 0;
+            padding: 40px 20px;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-image:
+                radial-gradient(ellipse at 0% 0%, rgba(20, 30, 60, 0.3) 0px, transparent 50%),
+                radial-gradient(ellipse at 100% 0%, rgba(10, 15, 40, 0.5) 0px, transparent 50%);
+        }
+        .container {
+            width: 100%;
+            max-width: 500px;
+            background: linear-gradient(135deg, var(--bg-elevated) 0%, var(--bg-surface) 100%);
+            border: 1px solid var(--border-default);
+            border-radius: 16px;
+            padding: 32px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(8px);
+        }
+        h1 {
+            font-size: 1.75rem;
+            font-weight: 800;
+            margin: 0 0 8px;
+            background: linear-gradient(135deg, #FF4B4B 0%, #FF6B6B 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            margin-bottom: 24px;
+            line-height: 1.5;
+        }
+        .step {
+            margin-bottom: 24px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .step:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+        .step-title {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .step-num {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: var(--accent);
+            color: #060a13;
+            font-size: 0.75rem;
+            font-weight: 900;
+        }
+        .step-desc {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            line-height: 1.5;
+            margin-bottom: 12px;
+        }
+        .form-input {
+            width: 100%;
+            padding: 12px;
+            background: #090e17;
+            border: 1px solid var(--border-default);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-family: inherit;
+            font-size: 0.85rem;
+            box-sizing: border-box;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .form-input:focus {
+            border-color: var(--accent);
+        }
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 10px 16px;
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            transition: background 0.2s, transform 0.1s;
+            box-sizing: border-box;
+            margin-top: 8px;
+        }
+        .btn-primary {
+            background: var(--accent);
+            color: #060a13;
+        }
+        .btn-primary:hover {
+            background: #2cb0eb;
+        }
+        .btn-success {
+            background: var(--success);
+            color: white;
+            width: 100%;
+            font-size: 0.9rem;
+            padding: 12px;
+            margin-top: 16px;
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
+        }
+        .btn-success:hover {
+            background: #0d9668;
+        }
+        .btn-secondary {
+            background: rgba(255,255,255,0.05);
+            color: var(--text-primary);
+            border: 1px solid var(--border-default);
+        }
+        .btn-secondary:hover {
+            background: rgba(255,255,255,0.08);
+        }
+        .status-msg {
+            font-size: 0.8rem;
+            margin-top: 8px;
+            display: none;
+            padding: 8px 12px;
+            border-radius: 6px;
+        }
+        .status-msg.error {
+            display: block;
+            background: rgba(244, 63, 94, 0.1);
+            color: var(--danger);
+            border: 1px solid rgba(244, 63, 94, 0.15);
+        }
+        .status-msg.success {
+            display: block;
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--success);
+            border: 1px solid rgba(16, 185, 129, 0.15);
+        }
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 12px 24px;
+            background: #10B981;
+            color: white;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            display: none;
+            animation: slideIn 0.3s forwards;
+            z-index: 9999;
+        }
+        @keyframes slideIn {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🐂 BULL Telegram Setup</h1>
+        <div class="subtitle">Connect the Market Intelligence Layer directly to your mobile phone.</div>
+
+        <!-- Step 1 -->
+        <div class="step">
+            <div class="step-title"><span class="step-num">1</span> Create Telegram Bot</div>
+            <div class="step-desc">Open Telegram and search for <strong>@BotFather</strong>. Send <code>/newbot</code>, follow the instructions to name it "BULL Terminal", and copy the HTTP API Token.</div>
+            <input type="text" id="botToken" class="form-input" placeholder="Paste your bot token here (e.g. 123456789:ABCdef...)">
+        </div>
+
+        <!-- Step 2 -->
+        <div class="step">
+            <div class="step-title"><span class="step-num">2</span> Detect Chat ID</div>
+            <div class="step-desc">Search for your new bot on Telegram and send it a message once (e.g. "hi"). Then click the button below to auto-detect your chat ID.</div>
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <button class="btn btn-primary" onclick="detectChatId()">Detect my Chat ID</button>
+                <input type="text" id="chatId" class="form-input" style="flex: 1;" placeholder="Chat ID (auto-detected)">
+            </div>
+            <div id="detectStatus" class="status-msg"></div>
+        </div>
+
+        <!-- Step 3 -->
+        <div class="step">
+            <div class="step-title"><span class="step-num">3</span> Test Alerts</div>
+            <div class="step-desc">Verify your connection by sending a test message to your phone.</div>
+            <button class="btn btn-secondary" onclick="sendTestMessage()">Send Test Message</button>
+            <div id="testStatus" class="status-msg"></div>
+        </div>
+
+        <!-- Step 4 -->
+        <button class="btn btn-success" onclick="saveConfig()">SAVE CONFIGURATION</button>
+        <div id="saveStatus" class="status-msg" style="text-align: center; font-weight: bold;"></div>
+    </div>
+
+    <div id="toast" class="toast">✓ Configuration saved!</div>
+
+    <script>
+        async function detectChatId() {
+            const token = document.getElementById('botToken').value.trim();
+            const statusDiv = document.getElementById('detectStatus');
+            statusDiv.className = 'status-msg';
+            statusDiv.style.display = 'none';
+
+            if (!token) {
+                statusDiv.innerText = 'Error: Please paste your Bot Token in Step 1 first.';
+                statusDiv.className = 'status-msg error';
+                return;
+            }
+
+            statusDiv.innerText = 'Detecting Chat ID...';
+            statusDiv.style.display = 'block';
+
+            try {
+                const res = await fetch(`/setup/detect_chat_id?token=${encodeURIComponent(token)}`);
+                const data = await res.json();
+                if (data.success && data.chat_id) {
+                    document.getElementById('chatId').value = data.chat_id;
+                    statusDiv.innerText = `Success! Detected Chat ID: ${data.chat_id}`;
+                    statusDiv.className = 'status-msg success';
+                } else {
+                    statusDiv.innerText = data.error || 'Failed to detect Chat ID. Did you start the bot and send a message?';
+                    statusDiv.className = 'status-msg error';
+                }
+            } catch (err) {
+                statusDiv.innerText = 'Network error while detecting Chat ID.';
+                statusDiv.className = 'status-msg error';
+            }
+        }
+
+        async function sendTestMessage() {
+            const token = document.getElementById('botToken').value.trim();
+            const chatId = document.getElementById('chatId').value.trim();
+            const statusDiv = document.getElementById('testStatus');
+            statusDiv.className = 'status-msg';
+            statusDiv.style.display = 'none';
+
+            if (!token || !chatId) {
+                statusDiv.innerText = 'Error: Both Token and Chat ID are required to send a test.';
+                statusDiv.className = 'status-msg error';
+                return;
+            }
+
+            statusDiv.innerText = 'Sending test message...';
+            statusDiv.style.display = 'block';
+
+            try {
+                const res = await fetch('/setup/test_message', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token, chat_id: chatId })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    statusDiv.innerText = 'Success! Check your Telegram app for the test message.';
+                    statusDiv.className = 'status-msg success';
+                } else {
+                    statusDiv.innerText = data.error || 'Failed to send test message.';
+                    statusDiv.className = 'status-msg error';
+                }
+            } catch (err) {
+                statusDiv.innerText = 'Network error while sending test.';
+                statusDiv.className = 'status-msg error';
+            }
+        }
+
+        async function saveConfig() {
+            const token = document.getElementById('botToken').value.trim();
+            const chatId = document.getElementById('chatId').value.trim();
+            const statusDiv = document.getElementById('saveStatus');
+            statusDiv.className = 'status-msg';
+            statusDiv.style.display = 'none';
+
+            if (!token || !chatId) {
+                statusDiv.innerText = 'Error: Both Token and Chat ID must be filled and verified.';
+                statusDiv.className = 'status-msg error';
+                return;
+            }
+
+            try {
+                const res = await fetch('/setup/save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token, chat_id: chatId })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    statusDiv.innerText = 'Setup complete! You will receive morning brief at 8:45 AM every day.';
+                    statusDiv.className = 'status-msg success';
+                    
+                    // Show Toast
+                    const toast = document.getElementById('toast');
+                    toast.style.display = 'block';
+                    setTimeout(() => {
+                        toast.style.display = 'none';
+                        // Navigate to dashboard
+                        window.location.href = '/';
+                    }, 3000);
+                } else {
+                    statusDiv.innerText = data.error || 'Failed to save configuration.';
+                    statusDiv.className = 'status-msg error';
+                }
+            } catch (err) {
+                statusDiv.innerText = 'Network error while saving config.';
+                statusDiv.className = 'status-msg error';
+            }
+        }
+    </script>
+</body>
+</html>

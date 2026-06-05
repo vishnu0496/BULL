@@ -6,7 +6,11 @@ registerPage('fno', async function(container) {
     container.innerHTML = `
         <div class="flex justify-between items-center mb-16">
             <div>
-                <h1 class="page-title">F&O Desk: Statistical Arbitrage</h1>
+                <h1 class="page-title tooltip-container" style="cursor: help;">
+                    F&O Desk: Statistical Arbitrage
+                    <span class="tooltip-indicator">?</span>
+                    <span class="tooltip-text">Statistical Arbitrage (Stat Arb) is a quantitative trading strategy that exploits temporary pricing discrepancies between highly correlated financial instruments.</span>
+                </h1>
                 <p class="page-subtitle">Market-Neutral Pairs Trading using Z-Score mean reversion.</p>
             </div>
             <span class="badge" style="background: rgba(168, 85, 247, 0.1); color: #a855f7; border: 1px solid #a855f7;">QUANTITATIVE DESK</span>
@@ -91,7 +95,11 @@ function renderStatArbPairs(pairs) {
 
                 <div class="flex justify-between items-end mb-16">
                     <div>
-                        <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 4px;">Spread Z-Score</div>
+                        <div class="tooltip-container" style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 4px; cursor: help; display: inline-flex; align-items: center; gap: 4px;">
+                            Spread Z-Score
+                            <span class="tooltip-indicator">?</span>
+                            <span class="tooltip-text">A Z-score indicates how many standard deviations the current stock spread is from its historical mean. Values above +2 or below -2 indicate extreme divergence and arbitrage opportunity.</span>
+                        </div>
                         <div style="font-size: 2rem; font-weight: 900; color: ${zColor}; line-height: 1;">
                             ${zScore > 0 ? '+' : ''}${zScore.toFixed(2)}
                         </div>
