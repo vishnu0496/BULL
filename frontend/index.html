@@ -12,71 +12,96 @@
     <link rel="stylesheet" href="/css/styles.css?v=perf-1">
 </head>
 <body>
+    <!-- Mobile Header -->
+    <div class="mobile-header" id="mobileHeader">
+        <button class="hamburger-btn" id="hamburgerBtn" aria-label="Open navigation">
+            <span></span>
+            <span></span>
+            <span></span>
+        </button>
+        <div class="mobile-brand">BULL</div>
+        <div class="market-status" id="mobileMarketStatus">
+            <span class="status-dot offline"></span>
+        </div>
+    </div>
+
+    <!-- Sidebar Backdrop Overlay for Mobile -->
+    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
     <!-- Sidebar Navigation -->
     <aside class="sidebar" id="sidebar">
         <div class="sidebar-header">
             <div class="logo-mark">
                 <span class="logo-icon">📈</span>
                 <h1 class="logo-text">BULL</h1>
+                <button class="sidebar-close-btn" id="sidebarCloseBtn" aria-label="Close sidebar">&times;</button>
             </div>
             <p class="logo-subtitle">Research Desk</p>
         </div>
 
         <nav class="sidebar-nav" id="sidebarNav">
+            <div class="nav-section-label">START HERE EVERY MORNING</div>
+            
             <a href="#mentor" class="nav-item active" data-page="mentor">
                 <span class="nav-icon">🎓</span>
                 <span class="nav-label">Daily Mentor</span>
                 <span class="nav-badge pulse-dot" id="mentorBadge"></span>
             </a>
-            <a href="#research" class="nav-item" data-page="research">
-                <span class="nav-icon">📊</span>
-                <span class="nav-label">Research Desk</span>
-            </a>
-            <a href="#analyst" class="nav-item" data-page="analyst">
-                <span class="nav-icon">NA</span>
-                <span class="nav-label">News Analyst</span>
-            </a>
-
-            <div class="nav-divider"></div>
-
             <a href="#journal" class="nav-item" data-page="journal">
                 <span class="nav-icon">📖</span>
-                <span class="nav-label">Paper Journal</span>
+                <span class="nav-label">My Trades</span>
             </a>
             <a href="#analytics" class="nav-item" data-page="analytics">
-                <span class="nav-icon">PA</span>
-                <span class="nav-label">Paper Analytics</span>
-            </a>
-            <a href="#backtest" class="nav-item" data-page="backtest">
-                <span class="nav-icon">🧪</span>
-                <span class="nav-label">Backtest Lab</span>
-            </a>
-            <a href="#ranking" class="nav-item" data-page="ranking">
-                <span class="nav-icon">🏆</span>
-                <span class="nav-label">Strategy Ranking</span>
+                <span class="nav-icon">📊</span>
+                <span class="nav-label">My Performance</span>
             </a>
 
             <div class="nav-divider"></div>
 
-            <a href="#school" class="nav-item" data-page="school">
-                <span class="nav-icon">📚</span>
-                <span class="nav-label">Market School</span>
-            </a>
-            <a href="#fno" class="nav-item" data-page="fno">
-                <span class="nav-icon">🎫</span>
-                <span class="nav-label">F&O Desk</span>
-            </a>
-
-            <div class="nav-divider"></div>
-
-            <a href="#settings" class="nav-item" data-page="settings">
-                <span class="nav-icon">⚙️</span>
-                <span class="nav-label">Settings</span>
-            </a>
-            <a href="#health" class="nav-item" data-page="health">
-                <span class="nav-icon">🔍</span>
-                <span class="nav-label">Data Health</span>
-            </a>
+            <div class="nav-section-label">EXPLORE WHEN READY</div>
+            
+            <button class="explore-toggle-btn" id="exploreToggleBtn" type="button">
+                <span id="exploreToggleText">▼ More tools</span>
+            </button>
+            
+            <div class="explore-section collapsed" id="exploreSection">
+                <a href="#analyst" class="nav-item" data-page="analyst">
+                    <span class="nav-icon">📰</span>
+                    <span class="nav-label">News Analyst</span>
+                </a>
+                <a href="#backtest" class="nav-item" data-page="backtest">
+                    <span class="nav-icon">🧪</span>
+                    <span class="nav-label">Backtest Lab</span>
+                </a>
+                <a href="#ranking" class="nav-item" data-page="ranking">
+                    <span class="nav-icon">🏆</span>
+                    <span class="nav-label">Strategy Ranking</span>
+                </a>
+                <a href="#school" class="nav-item" data-page="school">
+                    <span class="nav-icon">📚</span>
+                    <span class="nav-label">Market School</span>
+                </a>
+                <a href="#fno" class="nav-item" data-page="fno">
+                    <span class="nav-icon">🎫</span>
+                    <span class="nav-label">F&O Desk</span>
+                </a>
+                <a href="#research" class="nav-item" data-page="research">
+                    <span class="nav-icon">🌍</span>
+                    <span class="nav-label">Market Universe</span>
+                </a>
+                <a href="/intelligence.html" target="_blank" class="nav-item" data-page="intelligence">
+                    <span class="nav-icon">🧠</span>
+                    <span class="nav-label">Intelligence</span>
+                </a>
+                <a href="#settings" class="nav-item" data-page="settings">
+                    <span class="nav-icon">⚙️</span>
+                    <span class="nav-label">Settings</span>
+                </a>
+                <a href="#health" class="nav-item" data-page="health">
+                    <span class="nav-icon">🔍</span>
+                    <span class="nav-label">Data Health</span>
+                </a>
+            </div>
         </nav>
 
         <div class="sidebar-footer">
@@ -89,21 +114,30 @@
 
     <!-- Main Content Area -->
     <header class="macro-ticker-bar" id="macroTickerBar">
+        <div class="macro-ticker-item nifty-item" id="macroNiftyItem" style="cursor: pointer;">
+            <span class="macro-ticker-label">Nifty 50</span>
+            <span class="macro-ticker-value" id="macroNifty">₹...</span>
+            <span class="macro-ticker-desc" id="macroNiftyDesc">Tap to view full metrics</span>
+        </div>
         <div class="macro-ticker-item">
             <span class="macro-ticker-label">Brent Crude</span>
             <span class="macro-ticker-value" id="macroCrude">₹...</span>
+            <span class="macro-ticker-desc" id="macroCrudeDesc">Oil price tracking</span>
         </div>
         <div class="macro-ticker-item">
             <span class="macro-ticker-label">USD/INR</span>
             <span class="macro-ticker-value" id="macroUsdInr">₹...</span>
+            <span class="macro-ticker-desc" id="macroUsdInrDesc">Currency rate tracking</span>
         </div>
         <div class="macro-ticker-item">
             <span class="macro-ticker-label">US 10Y Bond Yield</span>
             <span class="macro-ticker-value" id="macroUs10y">...%</span>
+            <span class="macro-ticker-desc" id="macroUs10yDesc">US bond yield</span>
         </div>
         <div class="macro-ticker-item" style="border-right: none;">
             <span class="macro-ticker-label">Geopolitical Risk</span>
             <span class="macro-ticker-value" id="macroRisk">Monitoring...</span>
+            <span class="macro-ticker-desc" id="macroRiskDesc">Global risk monitoring</span>
         </div>
     </header>
 

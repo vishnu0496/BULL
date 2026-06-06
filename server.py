@@ -378,6 +378,10 @@ def execute_trade(ticker: str, price: float, atr: float, ml_score: float):
 def get_trades():
     return {"status": "success", "trades": broker.trades}
 
+@app.get("/api/journal")
+def get_journal():
+    return broker.trades
+
 @app.post("/api/trade/close")
 def close_trade(trade_id: int, exit_price: float):
     trade = broker.close_trade(trade_id, exit_price)
@@ -701,6 +705,120 @@ def serve_intelligence():
             "Pragma": "no-cache",
         },
     )
+
+@app.get("/api/daily-lesson")
+def get_daily_lesson():
+    from src.constants import DAILY_LESSONS
+    from datetime import datetime, timezone, timedelta
+    utc_now = datetime.now(timezone.utc)
+    kolkata_tz = timezone(timedelta(hours=5, minutes=30))
+    now_ist = utc_now.astimezone(kolkata_tz)
+    day_of_year = now_ist.timetuple().tm_yday
+    lesson = DAILY_LESSONS[day_of_year % len(DAILY_LESSONS)]
+    return lesson
+
+@app.get("/api/morning-status")
+def get_morning_status():
+    from src.constants import is_nse_holiday
+    from datetime import datetime, timezone, timedelta
+    
+    # Timezone-aware IST
+    utc_now = datetime.now(timezone.utc)
+    kolkata_tz = timezone(timedelta(hours=5, minutes=30))
+    now_ist = utc_now.astimezone(kolkata_tz)
+    
+    # Calculate status
+    # Weekday check: Mon=0, Sun=6
+    if now_ist.weekday() >= 5 or is_nse_holiday(now_ist):
+        status = "WEEKEND"
+    else:
+        # Market hours: 9:15 AM to 3:30 PM (IST)
+        market_start = now_ist.replace(hour=9, minute=15, second=0, microsecond=0)
+        market_end = now_ist.replace(hour=15, minute=30, second=0, microsecond=0)
+        if now_ist < market_start:
+            status = "BEFORE_MARKET"
+        elif now_ist <= market_end:
+            status = "OPEN"
+        else:
+            status = "AFTER_MARKET"
+            
+    # Streak count and open trade count
+    open_trade_count = len([t for t in broker.trades if t.get("status") == "OPEN"])
+    
+    # Calculate streak count
+    dates = set()
+    for t in broker.trades:
+        t_time = t.get("entry_time") or t.get("trade_date")
+        if t_time:
+            try:
+                dt = datetime.strptime(t_time[:10], "%Y-%m-%d").date()
+                dates.add(dt)
+            except Exception:
+                pass
+                
+    streak_count = 0
+    if dates:
+        today_ist = now_ist.date()
+        curr = today_ist
+        if curr not in dates:
+            curr = today_ist - timedelta(days=1)
+            if curr not in dates:
+                curr = None
+        if curr is not None:
+            while curr in dates:
+                streak_count += 1
+                curr -= timedelta(days=1)
+                
+    # Time until next market day / opening/closing time
+    hours_left = 0
+    mins_left = 0
+    if status == "BEFORE_MARKET":
+        market_start = now_ist.replace(hour=9, minute=15, second=0, microsecond=0)
+        diff = market_start - now_ist
+        hours_left = diff.seconds // 3600
+        mins_left = (diff.seconds % 3600) // 60
+    elif status == "OPEN":
+        market_end = now_ist.replace(hour=15, minute=30, second=0, microsecond=0)
+        diff = market_end - now_ist
+        hours_left = diff.seconds // 3600
+        mins_left = (diff.seconds % 3600) // 60
+        
+    # Also find last trade logged date/days ago
+    last_trade_days_ago = -1
+    if broker.trades:
+        parsed_dates = []
+        for t in broker.trades:
+            t_time = t.get("entry_time") or t.get("trade_date")
+            if t_time:
+                try:
+                    dt = datetime.strptime(t_time[:10], "%Y-%m-%d").date()
+                    parsed_dates.append(dt)
+                except Exception:
+                    pass
+        if parsed_dates:
+            last_date = max(parsed_dates)
+            last_trade_days_ago = (now_ist.date() - last_date).days
+            
+    # Suggestions/setups
+    setup_ticker = None
+    try:
+        from src.engine import get_mentor_suggestions
+        mentor_picks = get_mentor_suggestions()
+        trade_setups = [s for s in mentor_picks if s.get("decision") == "TRADE"]
+        if trade_setups:
+            setup_ticker = trade_setups[0]["ticker"].replace(".NS", "")
+    except Exception:
+        pass
+        
+    return {
+        "status": status,
+        "open_trade_count": open_trade_count,
+        "streak_count": streak_count,
+        "hours_left": hours_left,
+        "mins_left": mins_left,
+        "last_trade_days_ago": last_trade_days_ago,
+        "setup_ticker": setup_ticker
+    }
 
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8000)

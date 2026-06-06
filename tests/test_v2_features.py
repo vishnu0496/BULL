@@ -3,7 +3,7 @@ import pytest
 from datetime import datetime
 from unittest.mock import patch, MagicMock
 from src.constants import is_nse_holiday
-from api.server import serve_setup, detect_chat_id, setup_test_message, TelegramSetupBody
+from api.server import serve_setup, detect_chat_id, setup_test_message, TelegramSetupBody, get_daily_lesson, get_morning_status
 
 def test_is_nse_holiday():
     sat = datetime(2026, 6, 6) # Saturday
@@ -86,3 +86,19 @@ async def test_setup_test_message_failure(mock_post):
     res = await setup_test_message(body)
     assert res["success"] is False
     assert "error" in res
+
+def test_get_daily_lesson():
+    lesson = get_daily_lesson()
+    assert "title" in lesson
+    assert "body" in lesson
+    assert "emoji" in lesson
+
+def test_get_morning_status():
+    status_info = get_morning_status()
+    assert "status" in status_info
+    assert status_info["status"] in {"WEEKEND", "BEFORE_MARKET", "OPEN", "AFTER_MARKET"}
+    assert "open_trade_count" in status_info
+    assert "streak_count" in status_info
+    assert "hours_left" in status_info
+    assert "mins_left" in status_info
+    assert "last_trade_days_ago" in status_info

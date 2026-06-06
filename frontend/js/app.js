@@ -209,25 +209,101 @@ function updateMarketStatus() {
     const isMarketHours = totalMinutes >= 555 && totalMinutes <= 930;
     const isOpen = isWeekday && isMarketHours;
 
-    const dot = document.querySelector('.status-dot');
-    const text = document.querySelector('.status-text');
-
-    if (dot && text) {
-        dot.className = `status-dot ${isOpen ? 'online' : 'offline'}`;
-        text.textContent = isOpen ? 'Market Open' : 'Market Closed';
-    }
+    document.querySelectorAll('.market-status').forEach(el => {
+        const dot = el.querySelector('.status-dot');
+        const text = el.querySelector('.status-text');
+        if (dot) {
+            dot.className = `status-dot ${isOpen ? 'online' : 'offline'}`;
+        }
+        if (text) {
+            text.textContent = isOpen ? 'Market Open' : 'Market Closed';
+        }
+    });
 }
 
 // ── Initialization ──
 document.addEventListener('DOMContentLoaded', () => {
+    // Sidebar Hamburger Menu & Backdrop
+    const sidebar = document.getElementById('sidebar');
+    const hamburgerBtn = document.getElementById('hamburgerBtn');
+    const sidebarCloseBtn = document.getElementById('sidebarCloseBtn');
+    const sidebarBackdrop = document.getElementById('sidebarBackdrop');
+
+    if (hamburgerBtn && sidebar && sidebarBackdrop) {
+        hamburgerBtn.addEventListener('click', () => {
+            sidebar.classList.add('mobile-open');
+            sidebarBackdrop.classList.add('active');
+        });
+    }
+
+    const closeSidebar = () => {
+        if (sidebar && sidebarBackdrop) {
+            sidebar.classList.remove('mobile-open');
+            sidebarBackdrop.classList.remove('active');
+        }
+    };
+
+    if (sidebarCloseBtn) {
+        sidebarCloseBtn.addEventListener('click', closeSidebar);
+    }
+    if (sidebarBackdrop) {
+        sidebarBackdrop.addEventListener('click', closeSidebar);
+    }
+
     // Setup nav clicks
     document.querySelectorAll('.nav-item').forEach(item => {
         item.addEventListener('click', (e) => {
             e.preventDefault();
             const page = item.dataset.page;
             window.location.hash = page;
+            closeSidebar();
         });
     });
+
+    // Top Bar Mobile Expansion
+    const macroTickerBar = document.getElementById('macroTickerBar');
+    const macroNiftyItem = document.getElementById('macroNiftyItem');
+    if (macroNiftyItem && macroTickerBar) {
+        macroNiftyItem.addEventListener('click', (e) => {
+            if (window.innerWidth <= 768) {
+                macroTickerBar.classList.toggle('expanded');
+            }
+        });
+    }
+
+    // Explore Section Toggle
+    const exploreToggleBtn = document.getElementById('exploreToggleBtn');
+    const exploreSection = document.getElementById('exploreSection');
+    const exploreToggleText = document.getElementById('exploreToggleText');
+
+    if (exploreToggleBtn && exploreSection && exploreToggleText) {
+        // Restore state
+        const isCollapsed = localStorage.getItem('exploreSectionCollapsed') !== 'false';
+        if (isCollapsed) {
+            exploreSection.classList.remove('expanded');
+            exploreSection.classList.add('collapsed');
+            exploreToggleText.textContent = '▼ More tools';
+        } else {
+            exploreSection.classList.remove('collapsed');
+            exploreSection.classList.add('expanded');
+            exploreToggleText.textContent = '▲ Less tools';
+        }
+
+        exploreToggleBtn.addEventListener('click', () => {
+            const currentlyCollapsed = exploreSection.classList.contains('collapsed');
+            if (currentlyCollapsed) {
+                exploreSection.classList.remove('collapsed');
+                exploreSection.classList.add('expanded');
+                exploreToggleText.textContent = '▲ Less tools';
+                localStorage.setItem('exploreSectionCollapsed', 'false');
+            } else {
+                exploreSection.classList.remove('expanded');
+                exploreSection.classList.add('collapsed');
+                exploreToggleText.textContent = '▼ More tools';
+                localStorage.setItem('exploreSectionCollapsed', 'true');
+            }
+        });
+    }
 
     // Hash-based routing
     function handleRoute() {
@@ -291,6 +367,49 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 180);
     }, { passive: true });
     
+    // Live Indices Stream Connection (SSE)
+    let indicesSource = null;
+    function connectIndicesStream() {
+        if (indicesSource) {
+            indicesSource.close();
+        }
+        indicesSource = new EventSource('/api/indices/stream');
+        indicesSource.onmessage = function(event) {
+            try {
+                const data = JSON.parse(event.data);
+                if (data.items) {
+                    const nifty = data.items.find(item => item.id === 'NIFTY');
+                    if (nifty) {
+                        const niftyVal = document.getElementById('macroNifty');
+                        const niftyDesc = document.getElementById('macroNiftyDesc');
+                        if (niftyVal) {
+                            const changeClass = nifty.change_percent >= 0 ? 'up' : 'down';
+                            const changeSign = nifty.change_percent >= 0 ? '▲' : '▼';
+                            niftyVal.innerHTML = `₹${nifty.value.toLocaleString('en-IN', {minimumFractionDigits: 2})} <span class="macro-ticker-change ${changeClass}">${changeSign}${Math.abs(nifty.change_percent).toFixed(2)}%</span>`;
+                            if (niftyDesc) {
+                                if (window.innerWidth <= 768) {
+                                    niftyDesc.textContent = "Tap to view full metrics";
+                                } else {
+                                    niftyDesc.textContent = nifty.change_percent >= 0 
+                                        ? "Nifty rising → market mood is positive today."
+                                        : "Nifty falling → market mood is cautious today.";
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('Error parsing live index data:', e);
+            }
+        };
+        indicesSource.onerror = function() {
+            indicesSource.close();
+            indicesSource = null;
+            setTimeout(connectIndicesStream, 5000);
+        };
+    }
+    connectIndicesStream();
+
     function connectPriceStream() {
         if (priceSource) {
             priceSource.close();
@@ -306,40 +425,62 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (data.type === 'macro') {
                     // Update Crude Oil
                     const crudeVal = document.getElementById('macroCrude');
+                    const crudeDesc = document.getElementById('macroCrudeDesc');
                     if (crudeVal && data.crude_oil) {
                         const val = data.crude_oil;
                         const changeClass = val.change_pct >= 0 ? 'up' : 'down';
-                        const changeSign = val.change_pct >= 0 ? '+' : '';
-                        crudeVal.innerHTML = `$${val.price.toFixed(2)} <span class="macro-ticker-change ${changeClass}">${changeSign}${val.change_pct.toFixed(2)}%</span>`;
+                        const changeSign = val.change_pct >= 0 ? '▲' : '▼';
+                        crudeVal.innerHTML = `$${val.price.toFixed(2)} <span class="macro-ticker-change ${changeClass}">${changeSign}${Math.abs(val.change_pct).toFixed(2)}%</span>`;
+                        if (crudeDesc) {
+                            crudeDesc.textContent = val.change_pct < 0 
+                                ? "Oil down → good for India. Petrol/diesel may get cheaper." 
+                                : "Oil up → bad for India. Inflation risk. Avoid aviation stocks.";
+                        }
                     }
                     
                     // Update USD/INR
                     const usdInrVal = document.getElementById('macroUsdInr');
+                    const usdInrDesc = document.getElementById('macroUsdInrDesc');
                     if (usdInrVal && data.usd_inr) {
                         const val = data.usd_inr;
                         const changeClass = val.change_pct >= 0 ? 'up' : 'down';
-                        const changeSign = val.change_pct >= 0 ? '+' : '';
-                        usdInrVal.innerHTML = `₹${val.price.toFixed(2)} <span class="macro-ticker-change ${changeClass}">${changeSign}${val.change_pct.toFixed(2)}%</span>`;
+                        const changeSign = val.change_pct >= 0 ? '▲' : '▼';
+                        usdInrVal.innerHTML = `₹${val.price.toFixed(2)} <span class="macro-ticker-change ${changeClass}">${changeSign}${Math.abs(val.change_pct).toFixed(2)}%</span>`;
+                        if (usdInrDesc) {
+                            usdInrDesc.textContent = val.change_pct < 0 
+                                ? "Rupee strong → IT stocks may fall (they earn in dollars)" 
+                                : "Rupee weak → IT stocks may rise, imports get expensive";
+                        }
                     }
                     
                     // Update US 10Y Yield
                     const us10yVal = document.getElementById('macroUs10y');
+                    const us10yDesc = document.getElementById('macroUs10yDesc');
                     if (us10yVal && data.us_10y_yield) {
                         const val = data.us_10y_yield;
                         const changeClass = val.change_pct >= 0 ? 'up' : 'down';
-                        const changeSign = val.change_pct >= 0 ? '+' : '';
-                        us10yVal.innerHTML = `${val.price.toFixed(2)}% <span class="macro-ticker-change ${changeClass}">${changeSign}${val.change_pct.toFixed(2)}%</span>`;
+                        const changeSign = val.change_pct >= 0 ? '▲' : '▼';
+                        us10yVal.innerHTML = `${val.price.toFixed(2)}% <span class="macro-ticker-change ${changeClass}">${changeSign}${Math.abs(val.change_pct).toFixed(2)}%</span>`;
+                        if (us10yDesc) {
+                            us10yDesc.textContent = val.change_pct >= 0 
+                                ? "US yields up → foreign money may leave India. Watch for FII selling." 
+                                : "US yields down → good for Indian markets. FII may buy.";
+                        }
                     }
                     
                     // Update Geopolitical Risk
                     const riskVal = document.getElementById('macroRisk');
+                    const riskDesc = document.getElementById('macroRiskDesc');
                     if (riskVal && data.global_risk) {
                         const val = data.global_risk;
                         let badgeType = 'neutral';
                         if (val.level === 'HIGH') badgeType = 'danger';
                         else if (val.level === 'LOW') badgeType = 'success';
                         
-                        riskVal.innerHTML = `<span class="badge badge-${badgeType}" style="padding: 2px 6px; font-size: 0.65rem;">${val.level}</span> <span style="font-size: 0.78rem; font-weight: normal; color: var(--text-muted); margin-left: 6px;">${val.reason}</span>`;
+                        riskVal.innerHTML = `<span class="badge badge-${badgeType}" style="padding: 2px 6px; font-size: 0.65rem;">${val.level}</span>`;
+                        if (riskDesc) {
+                            riskDesc.textContent = `What this means: ${val.reason}`;
+                        }
                     }
                     return;
                 }
