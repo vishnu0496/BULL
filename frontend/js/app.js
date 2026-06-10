@@ -262,9 +262,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Top Bar Mobile Expansion
     const macroTickerBar = document.getElementById('macroTickerBar');
-    const macroNiftyItem = document.getElementById('macroNiftyItem');
-    if (macroNiftyItem && macroTickerBar) {
-        macroNiftyItem.addEventListener('click', (e) => {
+    const topbarNiftyItem = document.getElementById('topbarNiftyItem');
+    if (topbarNiftyItem && macroTickerBar) {
+        topbarNiftyItem.addEventListener('click', (e) => {
             if (window.innerWidth <= 768) {
                 macroTickerBar.classList.toggle('expanded');
             }
@@ -346,8 +346,23 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
             }
+
+            // Fetch and update BULL Score
+            const marketRegime = await API.get('/api/market/regime').catch(() => ({ trend_score: 50 }));
+            const bullScore = marketRegime.trend_score || 50;
+            const scoreValEl = document.getElementById('topbarBullScore');
+            if (scoreValEl) {
+                scoreValEl.textContent = `${bullScore}/100`;
+                if (bullScore >= 65) {
+                    scoreValEl.style.color = 'var(--success)';
+                } else if (bullScore <= 35) {
+                    scoreValEl.style.color = 'var(--danger)';
+                } else {
+                    scoreValEl.style.color = 'var(--warning)';
+                }
+            }
         } catch (e) {
-            console.error('Failed to poll macro regime', e);
+            console.error('Failed to poll macro regime/BULL score', e);
         }
     }
 

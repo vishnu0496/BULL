@@ -1,20 +1,51 @@
 /* ============================================================
-   Paper Journal — Page Module
+   My Trades (Paper Journal) — Page Module
    ============================================================ */
 
 registerPage('journal', async function(container) {
     container.innerHTML = `
-        <h1 class="page-title">Paper Journal</h1>
-        <p class="page-subtitle">Log your simulated trades, track open positions, and review your historical performance.</p>
+        <h1 class="page-title">My Trades</h1>
+        <p class="page-subtitle">View your open practice trades and study your trading history.</p>
 
         <div class="tabs mt-24">
-            <button class="tab active" data-tab="log">Log New Trade</button>
-            <button class="tab" data-tab="open">Open Positions</button>
-            <button class="tab" data-tab="history">Trade History</button>
+            <button class="tab active" data-tab="open">Open Trades</button>
+            <button class="tab" data-tab="history">Closed Trades</button>
+            <button class="tab" data-tab="log">Log Manual Trade</button>
+        </div>
+
+        <!-- Open Positions Tab (Active default) -->
+        <div class="tab-content active" data-tab="open">
+            <div class="metric-card mb-24" style="max-width: 300px;">
+                <div class="metric-label">Total Money Made / Lost</div>
+                <div id="realizedPnlVal" class="metric-value">...</div>
+                <div class="metric-note">From all closed trades (includes 0.15% tax/charge friction)</div>
+            </div>
+            
+            <div class="card">
+                <h3 class="section-title">Active Holdings</h3>
+                <div id="holdingsTableContainer">
+                    <div class="skeleton-line"></div>
+                    <div class="skeleton-line"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- History Tab -->
+        <div class="tab-content" data-tab="history">
+            <div class="card">
+                <div class="flex justify-between items-center mb-16">
+                    <h3 class="section-title" style="margin:0;">Closed Trades</h3>
+                    <button class="btn btn-secondary btn-sm" onclick="exportJournalCSV()">Download CSV</button>
+                </div>
+                <div id="historyTableContainer">
+                    <div class="skeleton-line"></div>
+                    <div class="skeleton-line"></div>
+                </div>
+            </div>
         </div>
 
         <!-- Log Trade Tab -->
-        <div class="tab-content active" data-tab="log">
+        <div class="tab-content" data-tab="log">
             <div class="card" style="max-width: 600px;">
                 <h3 class="section-title">Record Practice Trade</h3>
                 
@@ -57,37 +88,6 @@ registerPage('journal', async function(container) {
                 <button class="btn btn-primary btn-full mt-16" onclick="submitPaperTrade()">Save Simulated Trade</button>
             </div>
         </div>
-
-        <!-- Open Positions Tab -->
-        <div class="tab-content" data-tab="open">
-            <div class="metric-card mb-24" style="max-width: 300px;">
-                <div class="metric-label">Total Realized PnL</div>
-                <div id="realizedPnlVal" class="metric-value">...</div>
-                <div class="metric-note">From all closed trades (incl. 0.15% friction)</div>
-            </div>
-            
-            <div class="card">
-                <h3 class="section-title">Active Holdings</h3>
-                <div id="holdingsTableContainer" style="overflow-x: auto;">
-                    <div class="skeleton-line"></div>
-                    <div class="skeleton-line"></div>
-                </div>
-            </div>
-        </div>
-
-        <!-- History Tab -->
-        <div class="tab-content" data-tab="history">
-            <div class="card">
-                <div class="flex justify-between items-center mb-16">
-                    <h3 class="section-title" style="margin:0;">Trade Log</h3>
-                    <button class="btn btn-secondary btn-sm" onclick="exportJournalCSV()">Download CSV</button>
-                </div>
-                <div id="historyTableContainer" style="overflow-x: auto;">
-                    <div class="skeleton-line"></div>
-                    <div class="skeleton-line"></div>
-                </div>
-            </div>
-        </div>
     `;
 
     initTabs(container);
@@ -114,20 +114,24 @@ async function loadJournalData() {
 
         // Populate select and setup price hint
         const select = document.getElementById('journalSymbolSelect');
-        select.innerHTML = watchlistData.map(w => `<option value="${w.ticker}">${cleanTicker(w.ticker)}</option>`).join('');
-        
-        select.addEventListener('change', async (e) => {
-            updatePriceHint(e.target.value);
-        });
-        
-        if (watchlistData.length > 0) {
-            updatePriceHint(watchlistData[0].ticker);
+        if (select) {
+            select.innerHTML = watchlistData.map(w => `<option value="${w.ticker}">${cleanTicker(w.ticker)}</option>`).join('');
+            
+            select.addEventListener('change', async (e) => {
+                updatePriceHint(e.target.value);
+            });
+            
+            if (watchlistData.length > 0) {
+                updatePriceHint(watchlistData[0].ticker);
+            }
         }
 
         // Render Open Positions
         const rp = document.getElementById('realizedPnlVal');
-        rp.textContent = formatINR(portfolio.total_realized_pnl);
-        rp.className = 'metric-value ' + (portfolio.total_realized_pnl > 0 ? 'success' : portfolio.total_realized_pnl < 0 ? 'danger' : '');
+        if (rp) {
+            rp.textContent = formatINR(portfolio.total_realized_pnl);
+            rp.className = 'metric-value ' + (portfolio.total_realized_pnl > 0 ? 'success' : portfolio.total_realized_pnl < 0 ? 'danger' : '');
+        }
 
         renderHoldings(portfolio.holdings);
         renderHistory(journal);
@@ -140,6 +144,7 @@ async function loadJournalData() {
 async function updatePriceHint(ticker) {
     const hintEl = document.getElementById('journalPriceHint');
     const priceInput = document.getElementById('journalPrice');
+    if (!hintEl || !priceInput) return;
     
     hintEl.textContent = 'Fetching latest price...';
     try {
@@ -194,94 +199,162 @@ async function submitPaperTrade() {
 
 function renderHoldings(holdings) {
     const container = document.getElementById('holdingsTableContainer');
+    if (!container) return;
     
     if (!holdings || holdings.length === 0) {
-        container.innerHTML = '<div class="text-muted">No open positions.</div>';
+        container.innerHTML = '<div class="text-muted" style="padding: 24px 0; text-align: center;">No open positions. Log a trade from "Today\'s Picks" to start!</div>';
         return;
     }
 
-    let html = `
-        <table class="data-table">
-            <thead>
-                <tr>
-                    <th>Symbol</th>
-                    <th class="text-right">Shares</th>
-                    <th class="text-right">Avg Cost</th>
-                    <th class="text-right">Latest Price</th>
-                    <th class="text-right">Total Cost</th>
-                    <th class="text-right">Current Value</th>
-                    <th class="text-right">Unrealized PnL</th>
-                    <th class="text-right">PnL %</th>
-                    <th class="text-right">Action</th>
-                </tr>
-            </thead>
-            <tbody>
-    `;
+    let html = `<div class="journal-cards-grid">`;
 
     holdings.forEach(h => {
-        const pnlColor = h.unrealized_pnl > 0 ? 'text-success' : h.unrealized_pnl < 0 ? 'text-danger' : '';
+        const cleanSymbol = cleanTicker(h.ticker);
+        const pnl = h.unrealized_pnl || 0;
+        const pnlPct = h.unrealized_pnl_pct || 0;
+        const pnlClass = pnl >= 0 ? 'positive' : 'negative';
+        const pnlSign = pnl >= 0 ? '+' : '';
+
         html += `
-            <tr>
-                <td class="text-bold">${cleanTicker(h.ticker)}</td>
-                <td class="text-right">${h.shares}</td>
-                <td class="text-right">${formatINR(h.avg_cost)}</td>
-                <td class="text-right">${formatINR(h.latest_price)}</td>
-                <td class="text-right">${formatINR(h.total_cost)}</td>
-                <td class="text-right">${formatINR(h.current_value)}</td>
-                <td class="text-right text-bold ${pnlColor}">${formatINR(h.unrealized_pnl)}</td>
-                <td class="text-right text-bold ${pnlColor}">${formatPct(h.unrealized_pnl_pct)}</td>
-                <td class="text-right">
-                    <button class="btn btn-danger btn-sm" onclick="closePosition('${h.ticker}', ${h.shares}, ${h.latest_price}, ${h.avg_cost}, ${h.stop_loss})">Close</button>
-                </td>
-            </tr>
+            <div class="journal-trade-card">
+                <div class="journal-card-header">
+                    <span class="journal-card-ticker">${escapeHtml(cleanSymbol)}</span>
+                    <span class="journal-card-badge open">🟢 OPEN</span>
+                </div>
+                <div class="journal-card-body">
+                    <div class="journal-detail"><strong>Shares:</strong> ${h.shares}</div>
+                    <div class="journal-detail"><strong>Average Buy Price:</strong> ${formatINR(h.avg_cost)}</div>
+                    <div class="journal-detail"><strong>Current Live Price:</strong> ${formatINR(h.latest_price)}</div>
+                    <div class="journal-pnl ${pnlClass}">
+                        <strong>P&L:</strong> ${pnlSign}${formatINR(pnl)} (${formatPct(pnlPct)})
+                    </div>
+                </div>
+                <div class="journal-card-actions">
+                    <button class="btn btn-danger btn-sm" onclick="closePosition('${h.ticker}', ${h.shares}, ${h.latest_price}, ${h.avg_cost}, ${h.stop_loss})">
+                        Close This Trade
+                    </button>
+                </div>
+            </div>
         `;
     });
 
-    html += `</tbody></table>`;
+    html += `</div>`;
     container.innerHTML = html;
+}
+
+function getClosedTrades(transactions) {
+    const sorted = [...transactions].sort((a, b) => new Date(a.trade_date || a.logged_at) - new Date(b.trade_date || b.logged_at));
+    const holdings = {};
+    const closedTrades = [];
+
+    sorted.forEach(t => {
+        const ticker = t.ticker.toUpperCase();
+        const action = t.action.toUpperCase();
+        const qty = parseInt(t.quantity, 10);
+        const price = parseFloat(t.price);
+        const date = t.trade_date;
+
+        if (!holdings[ticker]) {
+            holdings[ticker] = [];
+        }
+
+        if (action === 'BUY') {
+            holdings[ticker].push({ qty: qty, price: price, date: date });
+        } else if (action === 'SELL') {
+            let sellQty = qty;
+            let totalBuyCost = 0;
+            let oldestBuyDate = null;
+
+            while (sellQty > 0 && holdings[ticker].length > 0) {
+                const oldestBuy = holdings[ticker][0];
+                if (!oldestBuyDate) oldestBuyDate = oldestBuy.date;
+
+                if (oldestBuy.qty <= sellQty) {
+                    totalBuyCost += oldestBuy.qty * oldestBuy.price;
+                    sellQty -= oldestBuy.qty;
+                    holdings[ticker].shift();
+                } else {
+                    totalBuyCost += sellQty * oldestBuy.price;
+                    oldestBuy.qty -= sellQty;
+                    sellQty = 0;
+                }
+            }
+
+            const buyCostWithFriction = totalBuyCost * 1.0015;
+            const sellValueWithFriction = (qty - sellQty) * price * 0.9985;
+            const pnl = sellValueWithFriction - buyCostWithFriction;
+
+            let durationDays = 0;
+            if (oldestBuyDate) {
+                const buyD = new Date(oldestBuyDate);
+                const sellD = new Date(date);
+                const diffTime = Math.abs(sellD - buyD);
+                durationDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            }
+
+            closedTrades.push({
+                ticker: ticker,
+                pnl: pnl,
+                duration: durationDays,
+                qty: qty - sellQty,
+                sellPrice: price,
+                buyPrice: totalBuyCost / (qty - sellQty),
+                date: date
+            });
+        }
+    });
+
+    return closedTrades.reverse();
 }
 
 function renderHistory(history) {
     const container = document.getElementById('historyTableContainer');
+    if (!container) return;
     
     if (!history || history.length === 0) {
-        container.innerHTML = '<div class="text-muted">No trade history.</div>';
+        container.innerHTML = '<div class="text-muted" style="padding: 24px 0; text-align: center;">No trade history.</div>';
         return;
     }
 
-    let html = `
-        <table class="data-table">
-            <thead>
-                <tr>
-                    <th>Date</th>
-                    <th>Symbol</th>
-                    <th>Action</th>
-                    <th class="text-right">Quantity</th>
-                    <th class="text-right">Price</th>
-                    <th>Notes</th>
-                </tr>
-            </thead>
-            <tbody>
-    `;
+    const closedTrades = getClosedTrades(history);
 
-    history.forEach(t => {
-        const actionBadge = t.action === 'BUY' 
-            ? `<span class="badge" style="background:var(--success-dim); color:var(--success)">BUY</span>`
-            : `<span class="badge" style="background:var(--danger-dim); color:var(--danger)">SELL</span>`;
-            
+    if (closedTrades.length === 0) {
+        container.innerHTML = '<div class="text-muted" style="padding: 24px 0; text-align: center;">No closed trades yet. Open positions will appear here once closed.</div>';
+        return;
+    }
+
+    let html = `<div class="journal-cards-grid">`;
+
+    closedTrades.forEach(t => {
+        const cleanSymbol = cleanTicker(t.ticker);
+        const pnl = t.pnl;
+        const isProfit = pnl >= 0;
+        const badgeClass = isProfit ? 'profit' : 'loss';
+        const badgeText = isProfit ? '✅ PROFIT' : '❌ LOSS';
+        const cardClass = isProfit ? 'journal-trade-card--profit' : 'journal-trade-card--loss';
+        
+        const durationText = t.duration === 0 ? 'Same day' : t.duration === 1 ? '1 day' : `${t.duration} days`;
+
         html += `
-            <tr>
-                <td>${t.trade_date}</td>
-                <td class="text-bold">${cleanTicker(t.ticker)}</td>
-                <td>${actionBadge}</td>
-                <td class="text-right">${t.quantity}</td>
-                <td class="text-right">${formatINR(t.price)}</td>
-                <td style="white-space: normal; max-width: 300px;">${escapeHtml(t.notes || '')}</td>
-            </tr>
+            <div class="journal-trade-card ${cardClass}" style="border-left: 4px solid ${isProfit ? 'var(--success)' : 'var(--danger)'};">
+                <div class="journal-card-header">
+                    <span class="journal-card-ticker">${escapeHtml(cleanSymbol)}</span>
+                    <span class="journal-card-badge ${badgeClass}">${badgeText}</span>
+                </div>
+                <div class="journal-card-body">
+                    <div class="journal-detail"><strong>Shares:</strong> ${t.qty}</div>
+                    <div class="journal-detail"><strong>Bought at:</strong> ${formatINR(t.buyPrice)}</div>
+                    <div class="journal-detail"><strong>Sold at:</strong> ${formatINR(t.sellPrice)}</div>
+                    <div class="journal-detail"><strong>Duration:</strong> ${durationText}</div>
+                    <div class="journal-pnl ${isProfit ? 'positive' : 'negative'}">
+                        <strong>${isProfit ? 'Made' : 'Lost'}:</strong> ${formatINR(Math.abs(pnl))}
+                    </div>
+                </div>
+            </div>
         `;
     });
 
-    html += `</tbody></table>`;
+    html += `</div>`;
     container.innerHTML = html;
 }
 

@@ -581,13 +581,11 @@ def fetch_overnight_headlines() -> list[str]:
 
 def generate_morning_brief() -> str:
     """
-    Compiles daily market intelligence brief in a phone-readable Markdown format.
-    Wraps all calls in individual try-except clauses to be resilient to partial data outages.
+    Compiles daily market intelligence brief in a phone-friendly WhatsApp style.
     """
     from datetime import datetime
     now = datetime.now()
-    day_str = now.strftime("%A")
-    date_str = now.strftime("%B %d, %Y")
+    day_str = now.strftime("%A %d %b") # e.g. Wednesday 11 Jun
     
     # 1. Premarket Score & Nifty Open Estimator
     pm_score = 50.0
@@ -599,14 +597,6 @@ def generate_morning_brief() -> str:
         gift_gap = pm.get("gift_nifty_gap", 0.0)
     except Exception:
         pass
-        
-    if gift_gap > 0.05:
-        nifty_open_direction = "UP"
-    elif gift_gap < -0.05:
-        nifty_open_direction = "DOWN"
-    else:
-        nifty_open_direction = "FLAT"
-    nifty_open_str = f"{nifty_open_direction} ~{abs(gift_gap):.2f}%"
 
     # 2. Market Mood Logic
     try:
@@ -620,48 +610,29 @@ def generate_morning_brief() -> str:
     high_urgency_neg_news = (macro_risk == "HIGH" or risk_score <= -0.25)
     
     if pm_score >= 65 and not high_urgency_neg_news:
-        market_mood = "BULLISH"
+        market_mood = "Bullish 🟢"
     elif pm_score <= 35 or macro_risk == "HIGH":
-        market_mood = "BEARISH"
+        market_mood = "Bearish 🔴"
     else:
-        market_mood = "CAUTIOUS"
+        market_mood = "Cautious 🟡"
 
     # 3. FII Daily Flows
-    fii_net_str = "Data pending"
+    fii_net_formatted = "Data pending"
     try:
         from src.fii_tracker import get_fii_signal
         fii = get_fii_signal()
         if fii and fii.get("source") != "NONE":
             fii_net = fii.get("fii_net", 0.0)
-            fii_net_str = f"{fii_net:+.1f} Cr"
+            if fii_net > 0:
+                fii_net_formatted = f"Bought ₹{abs(fii_net):.0f} Cr yesterday"
+            elif fii_net < 0:
+                fii_net_formatted = f"Sold ₹{abs(fii_net):.0f} Cr yesterday"
+            else:
+                fii_net_formatted = "Neutral yesterday"
     except Exception:
         pass
 
-    # 4. Sector Leading Today
-    sector_lead_str = "Data pending"
-    try:
-        from src.sector_rotation import get_sector_rankings
-        sectors = get_sector_rankings()
-        if sectors:
-            top_sector = sectors[0]
-            sector_lead_str = f"{top_sector['sector']} ({top_sector['weekly_return']:+.2f}%)"
-    except Exception:
-        pass
-
-    # 5. Overnight News
-    news_lines = []
-    try:
-        news_lines = fetch_overnight_headlines()
-    except Exception:
-        pass
-    
-    if news_lines:
-        news_str = "\n".join([f"• {line}" for line in news_lines])
-    else:
-        news_str = "No major overnight news. Clean market."
-
-    # 6. Today's Setups
-    setups_str = ""
+    # 4. Today's Setups
     mentor_picks = []
     try:
         from src.engine import get_mentor_suggestions
@@ -670,91 +641,72 @@ def generate_morning_brief() -> str:
         pass
         
     trade_setups = [s for s in mentor_picks if s.get("decision") == "TRADE"]
+    
+    # Render WhatsApp message
     if trade_setups:
+        trades_count_str = f"{len(trade_setups)} trade{'s' if len(trade_setups) > 1 else ''} today"
+        setups_block = ""
         for s in trade_setups[:3]:
-            ticker_clean = s['ticker'].replace('.NS','')
-            setups_str += f"• {ticker_clean}: Buy above ₹{s['entry_trigger']:.1f} (Conviction: {s['confidence_score']}/100)\n"
-        setups_str = setups_str.strip()
+            ticker_raw = s['ticker']
+            ticker_clean = ticker_raw.replace('.NS','')
+            
+            # Look up company name
+            company_name = ticker_clean
+            try:
+                from src.database import get_db_connection
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute("SELECT name FROM watchlist WHERE ticker = ?", (ticker_raw.upper(),))
+                row = cursor.fetchone()
+                conn.close()
+                if row and row['name']:
+                    company_name = row['name']
+            except Exception:
+                pass
+            
+            entry = s.get('entry_trigger', 0.0)
+            target = s.get('target_1', s.get('target', 0.0))
+            stop_loss = s.get('stop_loss', 0.0)
+            
+            # Suggested quantity based on Vishnu's max risk (₹280)
+            risk_per_share = abs(entry - stop_loss)
+            qty = 1
+            if risk_per_share > 0:
+                qty = max(1, int(280 / risk_per_share))
+            actual_max_loss = qty * risk_per_share
+            
+            target_gain_pct = ((target - entry) / entry * 100) if entry > 0 else 0.0
+            
+            # Plain English reason
+            reasons = [r for r in s.get('reasons', []) if not r.startswith("⚠️ AI Sentiment Override")]
+            reason_str = reasons[0] if reasons else "Strong buying volume and upward breakout momentum."
+            prob = s.get('ml_probability', 0.5)
+            
+            setups_block += (
+                f"{company_name.upper()} ({ticker_clean})\n"
+                f"Buy at ₹{entry:.0f}\n"
+                f"Keep stop loss at ₹{stop_loss:.0f} (maximum you can lose: ₹{actual_max_loss:.0f})\n"
+                f"Target ₹{target:.0f} (+{target_gain_pct:.0f}%)\n"
+                f"Reason: {reason_str} ML says {prob*100:.0f} % chance.\n\n"
+            )
+            
+        brief_message = (
+            f"🐂 BULL — {day_str}\n\n"
+            f"✅ {trades_count_str}:\n\n"
+            f"{setups_block.strip()}\n\n"
+            f"Open bull-nxlh.onrender.com to log it.\n\n"
+            f"—\n"
+            f"Market mood: {market_mood}\n"
+            f"FII: {fii_net_formatted}\n"
+        )
     else:
-        setups_str = "No A-grade setups today. Cash is a position. Wait."
-
-    # 7. Avoid List Today (Earnings/Promoter Sell/Negative News)
-    avoids = []
-    nifty_leaders = [
-        "RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", "ICICIBANK.NS",
-        "SBIN.NS", "TATAPOWER.NS", "ITC.NS", "LT.NS", "BHARTIARTL.NS",
-        "AXISBANK.NS", "M&M.NS", "MARUTI.NS", "NTPC.NS", "POWERGRID.NS",
-        "COALINDIA.NS", "SUNPHARMA.NS", "HINDALCO.NS", "ONGC.NS"
-    ]
-    try:
-        from src.engine import check_event_blackout
-        for ticker in nifty_leaders:
-            is_blocked, reason = check_event_blackout(ticker)
-            if is_blocked:
-                avoids.append(f"{ticker.replace('.NS','')}: Earnings/Div near")
-    except Exception:
-        pass
-        
-    try:
-        from src.promoter_tracker import get_recent_promoter_activity
-        promoters = get_recent_promoter_activity(days=3)
-        if promoters:
-            for p in promoters:
-                if "SELL" in p.get("transaction_type", "").upper() or "DISPOSAL" in p.get("transaction_type", "").upper():
-                    ticker_clean = p['ticker'].replace('.NS','')
-                    if not any(ticker_clean in a for a in avoids):
-                        avoids.append(f"{ticker_clean}: Promoter selling")
-    except Exception:
-        pass
-        
-    # Add negative sentiment avoids from picks
-    for s in mentor_picks:
-        if s.get("sentiment_label") == "BEARISH":
-            ticker_clean = s['ticker'].replace('.NS','')
-            if not any(ticker_clean in a for a in avoids):
-                avoids.append(f"{ticker_clean}: Negative news sentiment")
-                
-    if avoids:
-        avoid_str = "\n".join([f"• {a}" for a in avoids[:3]])
-    else:
-        avoid_str = "No specific avoids today."
-
-    # 8. Your Paper Trades
-    positions_str = ""
-    try:
-        from src.database import get_portfolio_holdings
-        active_holdings, _ = get_portfolio_holdings()
-        if active_holdings:
-            for pos in active_holdings[:3]:
-                ticker_clean = pos['ticker'].replace('.NS','')
-                pnl = pos['unrealized_pnl']
-                pnl_pct = pos['unrealized_pnl_pct']
-                positions_str += f"• {ticker_clean}: {pos['shares']} sh @ ₹{pos['avg_cost']:.1f} (P&L: {pnl:+.1f} [{pnl_pct:+.1f}%])\n"
-            positions_str = positions_str.strip()
-        else:
-            positions_str = "No open paper trades. Ready to start — log your first setup today."
-    except Exception:
-        positions_str = "No open paper trades. Ready to start — log your first setup today."
-
-    # Build final message text
-    brief_message = (
-        f"🐂 *BULL MORNING BRIEF* — {day_str}, {date_str}\n\n"
-        f"🌏 *MARKET MOOD:* {market_mood}\n"
-        f"• Pre-Market Score: {int(pm_score)}/100\n"
-        f"• Nifty likely open: {nifty_open_str}\n\n"
-        f"💰 *SMART MONEY:*\n"
-        f"• FII yesterday: {fii_net_str}\n"
-        f"• Sector leading today: {sector_lead_str}\n\n"
-        f"📰 *OVERNIGHT NEWS:*\n"
-        f"{news_str}\n\n"
-        f"🎯 *TODAY'S SETUPS:*\n"
-        f"{setups_str}\n\n"
-        f"⚠️ *AVOID TODAY:*\n"
-        f"{avoid_str}\n\n"
-        f"📊 *YOUR PAPER TRADES:*\n"
-        f"{positions_str}\n\n"
-        f"─────────────────────────────────\n"
-        f"🤖 _BULL Intelligence Layer v2_"
-    )
-    return brief_message
+        brief_message = (
+            f"🐂 BULL — {day_str}\n\n"
+            f"😴 No trades today.\n"
+            f"Market is weak. Sit in cash.\n"
+            f"Come back tomorrow.\n\n"
+            f"—\n"
+            f"Market mood: {market_mood}\n"
+        )
+    return brief_message.strip()
 

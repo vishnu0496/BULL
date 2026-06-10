@@ -43,8 +43,8 @@
             <div class="nav-section-label">START HERE EVERY MORNING</div>
             
             <a href="#mentor" class="nav-item active" data-page="mentor">
-                <span class="nav-icon">🎓</span>
-                <span class="nav-label">Daily Mentor</span>
+                <span class="nav-icon">🎯</span>
+                <span class="nav-label">Today's Picks</span>
                 <span class="nav-badge pulse-dot" id="mentorBadge"></span>
             </a>
             <a href="#journal" class="nav-item" data-page="journal">
@@ -53,7 +53,7 @@
             </a>
             <a href="#analytics" class="nav-item" data-page="analytics">
                 <span class="nav-icon">📊</span>
-                <span class="nav-label">My Performance</span>
+                <span class="nav-label">My Results</span>
             </a>
 
             <div class="nav-divider"></div>
@@ -67,31 +67,31 @@
             <div class="explore-section collapsed" id="exploreSection">
                 <a href="#analyst" class="nav-item" data-page="analyst">
                     <span class="nav-icon">📰</span>
-                    <span class="nav-label">News Analyst</span>
+                    <span class="nav-label">News & Headlines</span>
                 </a>
                 <a href="#backtest" class="nav-item" data-page="backtest">
                     <span class="nav-icon">🧪</span>
-                    <span class="nav-label">Backtest Lab</span>
+                    <span class="nav-label">Test Strategies</span>
                 </a>
                 <a href="#ranking" class="nav-item" data-page="ranking">
                     <span class="nav-icon">🏆</span>
-                    <span class="nav-label">Strategy Ranking</span>
+                    <span class="nav-label">What's Working</span>
                 </a>
                 <a href="#school" class="nav-item" data-page="school">
                     <span class="nav-icon">📚</span>
-                    <span class="nav-label">Market School</span>
+                    <span class="nav-label">Learn Trading</span>
                 </a>
                 <a href="#fno" class="nav-item" data-page="fno">
                     <span class="nav-icon">🎫</span>
-                    <span class="nav-label">F&O Desk</span>
+                    <span class="nav-label">F&O & Commodities</span>
                 </a>
                 <a href="#research" class="nav-item" data-page="research">
                     <span class="nav-icon">🌍</span>
-                    <span class="nav-label">Market Universe</span>
+                    <span class="nav-label">All Markets</span>
                 </a>
                 <a href="/intelligence.html" target="_blank" class="nav-item" data-page="intelligence">
                     <span class="nav-icon">🧠</span>
-                    <span class="nav-label">Intelligence</span>
+                    <span class="nav-label">Market Intelligence</span>
                 </a>
                 <a href="#settings" class="nav-item" data-page="settings">
                     <span class="nav-icon">⚙️</span>
@@ -113,33 +113,58 @@
     </aside>
 
     <!-- Main Content Area -->
-    <header class="macro-ticker-bar" id="macroTickerBar">
-        <div class="macro-ticker-item nifty-item" id="macroNiftyItem" style="cursor: pointer;">
-            <span class="macro-ticker-label">Nifty 50</span>
-            <span class="macro-ticker-value" id="macroNifty">₹...</span>
-            <span class="macro-ticker-desc" id="macroNiftyDesc">Tap to view full metrics</span>
+    <header class="macro-ticker-bar topbar-simple" id="macroTickerBar">
+        <div class="topbar-item" id="topbarNiftyItem">
+            <span class="topbar-label">Nifty 50</span>
+            <span class="topbar-value" id="macroNifty">₹...</span>
         </div>
-        <div class="macro-ticker-item">
-            <span class="macro-ticker-label">Brent Crude</span>
-            <span class="macro-ticker-value" id="macroCrude">₹...</span>
-            <span class="macro-ticker-desc" id="macroCrudeDesc">Oil price tracking</span>
+        <div class="topbar-item" id="topbarStatusItem">
+            <span class="topbar-label">Market Status</span>
+            <span class="topbar-value" id="topbarMarketStatus">
+                <span class="status-dot offline"></span>
+                <span class="status-text">Checking...</span>
+            </span>
         </div>
-        <div class="macro-ticker-item">
-            <span class="macro-ticker-label">USD/INR</span>
-            <span class="macro-ticker-value" id="macroUsdInr">₹...</span>
-            <span class="macro-ticker-desc" id="macroUsdInrDesc">Currency rate tracking</span>
-        </div>
-        <div class="macro-ticker-item">
-            <span class="macro-ticker-label">US 10Y Bond Yield</span>
-            <span class="macro-ticker-value" id="macroUs10y">...%</span>
-            <span class="macro-ticker-desc" id="macroUs10yDesc">US bond yield</span>
-        </div>
-        <div class="macro-ticker-item" style="border-right: none;">
-            <span class="macro-ticker-label">Geopolitical Risk</span>
-            <span class="macro-ticker-value" id="macroRisk">Monitoring...</span>
-            <span class="macro-ticker-desc" id="macroRiskDesc">Global risk monitoring</span>
+        <div class="topbar-score" id="topbarScoreItem" onclick="toggleScoreTooltip(event)">
+            <span class="topbar-label">BULL Score</span>
+            <span class="topbar-value" id="topbarBullScore">--/100</span>
+            <div class="score-tooltip" id="bullScoreTooltip">
+                <strong>BULL Score</strong> is our system's overall stock market conviction:
+                <ul style="margin: 8px 0 0 0; padding-left: 18px;">
+                    <li>🟢 <strong>65+</strong>: Market strong. Good day to trade.</li>
+                    <li>🟡 <strong>35-64</strong>: Cautious. Avoid heavy risk.</li>
+                    <li>🔴 <strong>Below 35</strong>: High risk. Sit in cash.</li>
+                </ul>
+            </div>
         </div>
     </header>
+
+    <button class="market-details-toggle" id="marketDetailsToggleBtn" onclick="toggleMarketDetails()">
+        Market Details ▼
+    </button>
+
+    <div class="market-details-collapsible" id="marketDetailsCollapsible" style="display: none;">
+        <div class="market-detail-item">
+            <span class="market-detail-label">Brent Crude (Oil)</span>
+            <span class="market-detail-value" id="macroCrude">₹...</span>
+            <span class="market-detail-desc" id="macroCrudeDesc">High oil prices hurt Indian businesses</span>
+        </div>
+        <div class="market-detail-item">
+            <span class="market-detail-label">USD / INR</span>
+            <span class="market-detail-value" id="macroUsdInr">₹...</span>
+            <span class="market-detail-desc" id="macroUsdInrDesc">Weak rupee increases import costs</span>
+        </div>
+        <div class="market-detail-item">
+            <span class="market-detail-label">US 10Y Bond Yield</span>
+            <span class="market-detail-value" id="macroUs10y">...%</span>
+            <span class="market-detail-desc" id="macroUs10yDesc">Higher yields pull foreign money away</span>
+        </div>
+        <div class="market-detail-item" style="border-right: none;">
+            <span class="market-detail-label">Geopolitical Risk</span>
+            <span class="market-detail-value" id="macroRisk">Monitoring...</span>
+            <span class="market-detail-desc" id="macroRiskDesc">War or international tension levels</span>
+        </div>
+    </div>
 
     <main class="main-content" id="mainContent">
         <!-- Page content injected here by JS -->
@@ -256,6 +281,49 @@
     <script>
         let fabAction = 'BUY';
         let currentClosePositionData = null;
+
+        function logTradeFromPick(ticker, price, target, stopLoss) {
+            document.getElementById('fabModal').classList.add('active');
+            document.getElementById('fabTicker').value = cleanTicker(ticker);
+            document.getElementById('fabPrice').value = price;
+            
+            // Calculate quantity based on max risk (280 Rs)
+            const maxRisk = 280; // Vishnu's max risk per trade
+            const riskPerShare = Math.abs(price - stopLoss);
+            let qty = 1;
+            if (riskPerShare > 0) {
+                qty = Math.max(1, Math.floor(maxRisk / riskPerShare));
+            }
+            document.getElementById('fabQty').value = qty.toString();
+            document.getElementById('fabStopLoss').value = stopLoss;
+            setFabAction('BUY');
+        }
+
+        function toggleMarketDetails() {
+            const collapsible = document.getElementById('marketDetailsCollapsible');
+            const btn = document.getElementById('marketDetailsToggleBtn');
+            if (collapsible.style.display === 'none') {
+                collapsible.style.display = 'flex';
+                btn.textContent = 'Market Details ▲';
+            } else {
+                collapsible.style.display = 'none';
+                btn.textContent = 'Market Details ▼';
+            }
+        }
+
+        function toggleScoreTooltip(event) {
+            event.stopPropagation();
+            const tooltip = document.getElementById('bullScoreTooltip');
+            tooltip.classList.toggle('visible');
+        }
+
+        // Hide tooltip when clicking anywhere else
+        document.addEventListener('click', () => {
+            const tooltip = document.getElementById('bullScoreTooltip');
+            if (tooltip) {
+                tooltip.classList.remove('visible');
+            }
+        });
 
         function openFabModal() {
             document.getElementById('fabModal').classList.add('active');
