@@ -1,62 +1,56 @@
-import os
-import sys
+import yfinance as yf
+from src import database
+import logging
 
-# Add project root directory to path to allow importing from 'src'
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+# Set up logging so we can see output on Render stdout/stderr
+logger = logging.getLogger("bull.data_seeder")
+logging.basicConfig(level=logging.INFO)
 
-from src.database import init_db, add_to_watchlist
-from src.fetcher import sync_ticker
-
-NIFTY_50 = [
-    "ADANIPORTS.NS", "APOLLOHOSP.NS", "ASIANPAINT.NS", "AXISBANK.NS", "BAJAJ-AUTO.NS",
-    "BAJFINANCE.NS", "BHARTIARTL.NS", "BPCL.NS", "BRITANNIA.NS", "CIPLA.NS",
-    "COALINDIA.NS", "DIVISLAB.NS", "DRREDDY.NS", "EICHERMOT.NS", "GRASIM.NS",
-    "HCLTECH.NS", "HDFCBANK.NS", "HDFCLIFE.NS", "HEROMOTOCO.NS", "HINDALCO.NS",
-    "HINDUNILVR.NS", "ICICIBANK.NS", "INDUSINDBK.NS", "INFY.NS", "ITC.NS",
-    "JSWSTEEL.NS", "KOTAKBANK.NS", "LT.NS", "LTIM.NS", "M&M.NS",
-    "MARUTI.NS", "NESTLEIND.NS", "NTPC.NS", "ONGC.NS", "POWERGRID.NS",
-    "RELIANCE.NS", "SBILIFE.NS", "SBIN.NS", "SUNPHARMA.NS", "TATACONSUM.NS",
-    "TATAMOTORS.NS", "TATAPOWER.NS", "TATASTEEL.NS", "TCS.NS", "TECHM.NS",
-    "TITAN.NS", "ULTRACEMCO.NS", "UPL.NS", "WIPRO.NS"
+NIFTY50 = [
+  "RELIANCE.NS","TCS.NS","HDFCBANK.NS",
+  "INFY.NS","ICICIBANK.NS","HINDUNILVR.NS",
+  "ITC.NS","SBIN.NS","BHARTIARTL.NS",
+  "KOTAKBANK.NS","BAJFINANCE.NS","AXISBANK.NS",
+  "LT.NS","MARUTI.NS","SUNPHARMA.NS",
+  "TITAN.NS","WIPRO.NS","ULTRACEMCO.NS",
+  "HCLTECH.NS","ADANIENT.NS","TATAMOTORS.NS",
+  "NTPC.NS","ONGC.NS","POWERGRID.NS",
+  "TECHM.NS","NESTLEIND.NS","DRREDDY.NS",
+  "BAJAJFINSV.NS","TATASTEEL.NS","JSWSTEEL.NS",
+  "GRASIM.NS","ADANIPORTS.NS","COALINDIA.NS",
+  "BPCL.NS","DIVISLAB.NS","BRITANNIA.NS",
+  "CIPLA.NS","EICHERMOT.NS","TATACONSUM.NS",
+  "APOLLOHOSP.NS","HEROMOTOCO.NS","HINDALCO.NS",
+  "M&M.NS","BAJAJ-AUTO.NS","ASIANPAINT.NS",
+  "LTIM.NS","VEDL.NS","INDUSINDBK.NS",
+  "SHREECEM.NS","PIDILITIND.NS"
 ]
 
 def main():
-    print("============================================================")
-    print("BULL DATABASE - SEEDING NIFTY 50 WATCHLIST & HISTORIES")
-    print("============================================================")
+    database.init_db()
     
-    # Initialize database tables
-    init_db()
-    
-    success_count = 0
-    # Add index explicitly to watchlist so it can be synced
-    try:
-        add_to_watchlist("^NSEI", "NIFTY 50 Index", "Index")
-        sync_ticker("^NSEI", period="1y")
-        print("   [OK] Synced ^NSEI (Nifty 50 Index)")
-    except Exception as e:
-        print(f"   [WARN] Index sync failed: {e}")
-
-    for idx, ticker in enumerate(NIFTY_50):
-        ticker_upper = ticker.upper()
-        print(f"[{idx+1}/{len(NIFTY_50)}] Processing {ticker_upper}...")
-        
+    # Add tickers to watchlist
+    for ticker in NIFTY50:
         try:
-            # Add ticker to watchlist first
-            add_to_watchlist(ticker_upper, ticker_upper.split('.')[0], "Nifty 50 Sector Leader")
-            # Sync ticker price history
-            res = sync_ticker(ticker_upper, period="1y")
-            if res['success']:
-                print(f"   [OK] Synced {res['name']} ({ticker_upper}) - {res['rows_synced']} price rows.")
-                success_count += 1
-            else:
-                print(f"   [FAIL] Sync failed for {ticker_upper}.")
+            database.add_to_watchlist(ticker)
+        except Exception:
+            pass
+    
+    # Download price history
+    for ticker in NIFTY50:
+        try:
+            df = yf.download(
+                ticker, 
+                period="6mo", 
+                interval="1d",
+                progress=False,
+                auto_adjust=True
+            )
+            if df is not None and len(df) > 0:
+                database.save_prices(ticker, df)
+                logger.info(f"Seeded {ticker}: {len(df)} rows")
         except Exception as e:
-            print(f"   [FAIL] Error during sync for {ticker_upper}: {str(e)}")
-            
-    print("============================================================")
-    print(f"SEEDING COMPLETE: Successfully synced {success_count}/{len(NIFTY_50)} tickers.")
-    print("============================================================")
+            logger.warning(f"Skip {ticker}: {e}")
 
 if __name__ == "__main__":
     main()

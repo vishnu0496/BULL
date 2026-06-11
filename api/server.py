@@ -207,21 +207,32 @@ def _morning_brief_job():
     except Exception as e:
         logger.error(f"Failed to run morning brief job: {e}")
 
+async def run_seed():
+    """Seed database with Nifty 50 data if empty."""
+    try:
+        from src.database import get_watchlist_tickers
+        tickers = get_watchlist_tickers()
+        if not tickers:
+            logger.info("Empty DB detected. Seeding...")
+            import sys, os
+            sys.path.insert(0, os.path.dirname(
+                os.path.dirname(__file__)))
+            from scripts.data_seeder import main
+            await asyncio.to_thread(main)
+            logger.info("Seeding complete.")
+    except Exception as e:
+        logger.error(f"Seed failed: {e}", exc_info=True)
+
+def run_seed_sync():
+    from scripts.data_seeder import main
+    main()
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize the database and scheduler on startup."""
     database.init_db()
     
-    # Auto-seed the database if it has no watchlist tickers
-    try:
-        from src.database import get_watchlist_tickers
-        if not get_watchlist_tickers():
-            logger.info("Database empty on startup. Automatically seeding Nifty 50 leaders...")
-            from scripts.data_seeder import main as seed_main
-            import threading
-            threading.Thread(target=seed_main, daemon=True).start()
-    except Exception as e:
-        logger.error(f"Failed to auto-seed database: {e}")
+    asyncio.create_task(run_seed())
     
     global MENTOR_PICKS_LOCK
     if MENTOR_PICKS_LOCK is None:
@@ -319,9 +330,16 @@ async def health():
                 "last_close": latest_close,
             })
         health_info["ticker_density"] = density
+        health_info["seeded"] = health_info.get("watchlist_count", 0) > 0 and health_info.get("price_count", 0) > 100
         return health_info
     except Exception as exc:
         return JSONResponse({"error": str(exc)}, status_code=500)
+
+@app.post("/api/admin/seed")
+async def force_seed(background_tasks: BackgroundTasks):
+    """Force database seed."""
+    background_tasks.add_task(run_seed_sync)
+    return {"status": "seeding_started"}
 
 
 # ---- Mentor Picks (heavy) -----------------------------------------

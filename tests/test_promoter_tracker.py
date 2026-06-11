@@ -84,7 +84,7 @@ def test_bulk_deals_parsing():
             "buySell": "BUY",
             "quantity": "250,000",
             "value": "62.50",
-            "date": "05-Jun-2026"
+            "date": datetime.today().strftime("%d-%b-%Y")
         }
     ]
     

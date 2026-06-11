@@ -339,7 +339,7 @@ def get_research_setups(setup_date=None):
     finally:
         conn.close()
 
-def add_to_watchlist(ticker: str, name: str, industry: str):
+def add_to_watchlist(ticker: str, name: str = "", industry: str = ""):
     """Add a ticker to the watchlist."""
     conn = get_db_connection()
     cursor = conn.cursor()
