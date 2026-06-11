@@ -212,6 +212,17 @@ async def lifespan(app: FastAPI):
     """Initialize the database and scheduler on startup."""
     database.init_db()
     
+    # Auto-seed the database if it has no watchlist tickers
+    try:
+        from src.database import get_watchlist_tickers
+        if not get_watchlist_tickers():
+            logger.info("Database empty on startup. Automatically seeding Nifty 50 leaders...")
+            from scripts.data_seeder import main as seed_main
+            import threading
+            threading.Thread(target=seed_main, daemon=True).start()
+    except Exception as e:
+        logger.error(f"Failed to auto-seed database: {e}")
+    
     global MENTOR_PICKS_LOCK
     if MENTOR_PICKS_LOCK is None:
         MENTOR_PICKS_LOCK = asyncio.Lock()
