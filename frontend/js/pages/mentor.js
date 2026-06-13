@@ -219,30 +219,39 @@ async function renderMainContent(picks, morningStatus, premarket, fii, indices, 
     if (!el) return;
 
     const status = morningStatus.status || 'WEEKEND';
-    const isMarketClosed = status === 'WEEKEND' || status === 'AFTER_MARKET' || status === 'BEFORE_MARKET';
+    const isMarketClosed = status === 'WEEKEND' || status === 'AFTER_MARKET';
     
     // Filter picks where decision is TRADE
     const tradePicks = (picks || []).filter(p => p.decision === 'TRADE');
+    const rankedCandidates = (picks || []).filter(p => p.decision !== 'REJECT').slice(0, 3);
 
     // State 3 — Market closed
     if (isMarketClosed) {
         const nextInfo = status === 'BEFORE_MARKET' 
             ? `Market opens in <strong>${morningStatus.hours_left || 0}h ${morningStatus.mins_left || 0}m</strong>.` 
             : `Market is closed. We will scan and post new picks on the next trading day at 9:15 AM IST.`;
+        const shortlistHtml = renderOpportunityShortlist(
+            rankedCandidates,
+            'Next Session Watchlist',
+            'These are the best current candidates from BULL. Do not buy them automatically; wait for the trigger and fresh market data.',
+            maxRisk,
+            false
+        );
 
         el.innerHTML = `
             <div class="bull-state-card">
                 <span class="state-emoji">☕</span>
                 <h2 class="state-title">Market is Closed</h2>
                 <div class="state-body">
-                    <p>BULL only suggests new trades when the Indian stock market is actively trading (Monday to Friday, 9:15 AM to 3:30 PM IST).</p>
+                    <p>BULL builds a fresh conditional trade plan before the next session and tracks triggers during market hours.</p>
                     <p><strong>Next Session:</strong> ${nextInfo}</p>
                     <p style="margin-top: 12px;">Use this time to review your open positions, analyze your results, or learn new concepts in Market School.</p>
                 </div>
                 <div class="state-footer">
-                    Regular scans resume on the next trading day.
+                    Fresh conditional scans resume before the next trading session.
                 </div>
             </div>
+            ${shortlistHtml}
         `;
         return;
     }
@@ -251,39 +260,46 @@ async function renderMainContent(picks, morningStatus, premarket, fii, indices, 
     if (tradePicks.length === 0) {
         const regimeReasons = (regime.reasons || ["Market trend is currently weak.", "Volatility is high."])
             .map(r => `<li>${escapeHtml(r)}</li>`).join('');
+        const shortlistHtml = renderOpportunityShortlist(
+            rankedCandidates,
+            'Best Stocks To Watch',
+            'No active buy signal passed the full checklist, but these are the top ranked candidates to track for a trigger.',
+            maxRisk,
+            false
+        );
 
         el.innerHTML = `
             <div class="bull-state-card">
                 <span class="state-emoji">😴</span>
-                <h2 class="state-title">No Trades Today</h2>
+                <h2 class="state-title">No Active Trades Yet</h2>
                 <div class="state-body">
-                    <p>BULL has scanned the market and decided it is safer to sit in cash today. Here is why:</p>
+                    <p>BULL has scanned the market and decided it is safer to sit in cash for now. Here is why:</p>
                     <ul>
                         ${regimeReasons}
                     </ul>
-                    <p style="margin-top: 12px;">Remember: <strong>patience is a key trading skill</strong>. Sitting on cash is a valid trade when market conditions are weak or risky.</p>
+                    <p style="margin-top: 12px;">Use the shortlist below for paper-trading observation only. A stock becomes actionable only after it crosses the buy trigger with fresh data.</p>
                 </div>
                 <div class="state-footer">
-                    Sit tight and come back tomorrow morning.
+                    No trigger means no trade.
                 </div>
             </div>
+            ${shortlistHtml}
         `;
         return;
     }
 
     // State 1 — TRADE picks found
-    const sectionTitle = `<h3 class="section-title" style="margin-top:24px;"><span class="icon">🎯</span> Today's Trade Picks</h3>`;
+    const sectionLabel = status === 'BEFORE_MARKET' ? 'Pre-Market Conditional Setups' : "Today's Conditional Setups";
+    const sectionTitle = `<h3 class="section-title" style="margin-top:24px;"><span class="icon">*</span> ${sectionLabel}</h3>`;
     const cards = tradePicks.map((idea) => {
         const sym = cleanTicker(idea.ticker);
         const stopLoss = idea.stop_loss || 0;
         const entryTrigger = idea.entry_trigger || 0;
         
-        // Calculate quantity based on max risk (280 Rs)
-        const maxRiskVal = 280; // Vishnu's max risk per trade
         const riskPerShare = Math.abs(entryTrigger - stopLoss);
-        let qty = 1;
+        let qty = idea.suggested_quantity || 1;
         if (riskPerShare > 0) {
-            qty = Math.max(1, Math.floor(maxRiskVal / riskPerShare));
+            qty = Math.max(1, Math.floor(maxRisk / riskPerShare));
         }
         
         const actualMaxLoss = riskPerShare * qty;
@@ -304,26 +320,26 @@ async function renderMainContent(picks, morningStatus, premarket, fii, indices, 
                         <div class="pick-sector">${escapeHtml(idea.sector || 'Nifty Leader')}</div>
                     </div>
                     <div style="font-size: 0.82rem; color: var(--text-muted); text-align: right;">
-                        Live: <span class="live-price" data-trigger="${entryTrigger}" style="font-weight: 700; color: var(--text-primary)">₹...</span>
+                        Live: <span class="live-price" data-trigger="${entryTrigger}" style="font-weight: 700; color: var(--text-primary)">INR ...</span>
                     </div>
                 </div>
 
                 <div class="pick-levels">
                     <div class="pick-level-item">
                         <div class="pick-level-label">Buy Trigger</div>
-                        <div class="pick-level-value" style="color: var(--accent);">₹${formatNum(entryTrigger)}</div>
+                        <div class="pick-level-value" style="color: var(--accent);">INR ${formatNum(entryTrigger)}</div>
                     </div>
                     <div class="pick-level-item">
                         <div class="pick-level-label">Safety Stop Loss</div>
-                        <div class="pick-level-value" style="color: var(--danger);">₹${formatNum(stopLoss)}</div>
+                        <div class="pick-level-value" style="color: var(--danger);">INR ${formatNum(stopLoss)}</div>
                     </div>
                     <div class="pick-level-item">
                         <div class="pick-level-label">Profit Target</div>
-                        <div class="pick-level-value" style="color: var(--success);">₹${formatNum(idea.target_1 || idea.target)}</div>
+                        <div class="pick-level-value" style="color: var(--success);">INR ${formatNum(idea.target_1 || idea.target)}</div>
                     </div>
                     <div class="pick-level-item">
                         <div class="pick-level-label">Maximum Loss</div>
-                        <div class="pick-level-value" style="color: var(--danger);">₹${formatNum(actualMaxLoss)}</div>
+                        <div class="pick-level-value" style="color: var(--danger);">INR ${formatNum(actualMaxLoss)}</div>
                     </div>
                 </div>
 
@@ -332,7 +348,7 @@ async function renderMainContent(picks, morningStatus, premarket, fii, indices, 
                     ${reasonsHtml}
                 </div>
 
-                <button class="pick-log-btn" onclick="logTradeFromPick('${escapeHtml(idea.ticker)}', ${entryTrigger}, ${idea.target_1 || idea.target}, ${stopLoss})">
+                <button class="pick-log-btn" onclick="logTradeFromPick('${escapeHtml(idea.ticker)}', ${entryTrigger}, ${idea.target_1 || idea.target}, ${stopLoss}, ${qty})">
                     Log This Trade
                 </button>
             </div>
@@ -340,6 +356,77 @@ async function renderMainContent(picks, morningStatus, premarket, fii, indices, 
     }).join('');
 
     el.innerHTML = sectionTitle + `<div class="bento-grid bento-3 mt-16">${cards}</div>`;
+}
+
+function renderOpportunityShortlist(picks, title, note, maxRisk, allowLog) {
+    if (!Array.isArray(picks) || picks.length === 0) {
+        return '';
+    }
+
+    const cards = picks.map((idea, index) => {
+        const sym = cleanTicker(idea.ticker);
+        const entryTrigger = Number(idea.entry_trigger || 0);
+        const stopLoss = Number(idea.stop_loss || 0);
+        const target = Number(idea.target_1 || idea.target || 0);
+        const riskPerShare = Math.abs(entryTrigger - stopLoss);
+        let qty = Number(idea.suggested_quantity || 0);
+        if (riskPerShare > 0 && maxRisk > 0) {
+            qty = Math.floor(maxRisk / riskPerShare);
+        }
+        const actualMaxLoss = riskPerShare * Math.max(qty, 0);
+        const reasonItems = (idea.reasons || ['Ranked by BULL technical scanner.'])
+            .filter(reason => /Historical edge|Sector overlay|News filter|Conditional long|Blocked/i.test(reason))
+            .slice(-4);
+        const reasonsHtml = (reasonItems.length ? reasonItems : ['Ranked by BULL technical scanner.'])
+            .map(reason => `<div class="pick-reason-item">${escapeHtml(reason)}</div>`)
+            .join('');
+        const decision = idea.decision || 'WAIT';
+        const canLog = allowLog && decision === 'TRADE' && qty > 0;
+        const buttonHtml = canLog
+            ? `<button class="pick-log-btn" onclick="logTradeFromPick('${escapeHtml(idea.ticker)}', ${entryTrigger}, ${target}, ${stopLoss}, ${qty})">Log This Trade</button>`
+            : `<button class="pick-log-btn" disabled style="opacity:0.55; cursor:not-allowed;">Watch Only</button>`;
+
+        return `
+            <div class="bull-pick-card" data-ticker="${escapeHtml(idea.ticker)}">
+                <div style="display:flex; justify-content:space-between; gap:16px; align-items:flex-start; margin-bottom:18px;">
+                    <div>
+                        <div class="pick-sector">Rank #${index + 1} / ${escapeHtml(idea.sector || 'Unknown sector')}</div>
+                        <div class="pick-ticker-name">${escapeHtml(sym)}</div>
+                    </div>
+                    ${decisionBadge(decision)}
+                </div>
+                <div class="pick-levels">
+                    <div class="pick-level-item">
+                        <div class="pick-level-label">Buy Trigger</div>
+                        <div class="pick-level-value" style="color: var(--accent);">INR ${formatNum(entryTrigger)}</div>
+                    </div>
+                    <div class="pick-level-item">
+                        <div class="pick-level-label">Stop Loss</div>
+                        <div class="pick-level-value" style="color: var(--danger);">INR ${formatNum(stopLoss)}</div>
+                    </div>
+                    <div class="pick-level-item">
+                        <div class="pick-level-label">Target</div>
+                        <div class="pick-level-value" style="color: var(--success);">INR ${formatNum(target)}</div>
+                    </div>
+                    <div class="pick-level-item">
+                        <div class="pick-level-label">Max Loss</div>
+                        <div class="pick-level-value" style="color: var(--danger);">INR ${formatNum(actualMaxLoss)}</div>
+                    </div>
+                </div>
+                <div class="pick-reasons">
+                    <div class="pick-reasons-title">Why this made the shortlist:</div>
+                    ${reasonsHtml}
+                </div>
+                ${buttonHtml}
+            </div>
+        `;
+    }).join('');
+
+    return `
+        <h3 class="section-title" style="margin-top:24px;"><span class="icon">*</span> ${escapeHtml(title)}</h3>
+        <p class="page-subtitle" style="margin-bottom: 12px;">${escapeHtml(note)}</p>
+        <div class="bento-grid bento-3 mt-16">${cards}</div>
+    `;
 }
 
 async function renderLessonCard(capital, maxRisk) {

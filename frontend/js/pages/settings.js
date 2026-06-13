@@ -14,13 +14,17 @@ registerPage('settings', async function(container) {
 
     try {
         const settings = await API.get('/api/capital');
-        renderSettingsForm(settings);
+        const mount = document.getElementById('settingsContent');
+        if (!mount) return;
+        renderSettingsForm(settings, mount);
     } catch (err) {
-        showError(document.getElementById('settingsContent'), err.message);
+        const mount = document.getElementById('settingsContent');
+        if (mount) showError(mount, err.message);
     }
 });
 
-function renderSettingsForm(s) {
+function renderSettingsForm(s, mount = document.getElementById('settingsContent')) {
+    if (!mount) return;
     const isConfigured = (field) => s[`${field}_configured`] === true || s[`${field}_status`] === 'CONFIGURED';
     const credentialPlaceholder = (field) => isConfigured(field) ? 'Configured' : '';
     const kiteConfigured = isConfigured('kite_api_key') && isConfigured('kite_api_secret') && isConfigured('kite_request_token');
@@ -33,7 +37,7 @@ function renderSettingsForm(s) {
         ? `<div class="alert alert-warning mt-16"><span>⚠️</span><div>Your risk per trade is <strong>${riskRatio.toFixed(1)}%</strong> of total capital. This is considered highly aggressive. Professional traders recommend 1-2%.</div></div>`
         : `<div class="alert alert-success mt-16"><span>✓</span><div>Your risk per trade is <strong>${riskRatio.toFixed(1)}%</strong> of total capital, which is within safe bounds (under 5%).</div></div>`;
 
-    document.getElementById('settingsContent').innerHTML = `
+    mount.innerHTML = `
         <div class="bento-grid bento-2-1">
             <div class="card">
                 <h3 class="section-title">Configuration Parameters</h3>

@@ -245,7 +245,7 @@ body {
     margin-left: var(--sidebar-width);
     width: calc(100% - var(--sidebar-width));
     min-height: 100vh;
-    padding: 32px 40px 48px;
+    padding: 92px 40px 48px;
     transition: margin-left var(--duration-normal) var(--ease-out);
 }
 
@@ -993,8 +993,13 @@ body {
     .nav-label, .logo-subtitle, .logo-text { display: none; }
     .logo-icon { font-size: 1.4rem; }
     .nav-item { justify-content: center; padding: 12px; }
-    .main-content { margin-left: var(--sidebar-collapsed); width: calc(100% - var(--sidebar-collapsed)); padding: 24px 20px; }
+    .main-content { margin-left: var(--sidebar-collapsed); width: calc(100% - var(--sidebar-collapsed)); padding: 84px 20px 48px; }
     .macro-ticker-bar { margin-left: var(--sidebar-collapsed); width: calc(100% - var(--sidebar-collapsed)); padding: 10px 20px; gap: 20px; }
+    .market-details-toggle,
+    .market-details-collapsible {
+        left: var(--sidebar-collapsed);
+        width: calc(100% - var(--sidebar-collapsed));
+    }
     .bento-3, .bento-2 { grid-template-columns: 1fr; }
 }
 
@@ -1010,8 +1015,9 @@ body {
     display: flex;
     flex-direction: column;
     z-index: 90;
-    position: sticky;
+    position: fixed;
     top: 0;
+    left: 0;
     white-space: nowrap;
     overflow: hidden;
     transition: margin-left var(--duration-normal) var(--ease-out);
@@ -1343,7 +1349,7 @@ body {
     .main-content {
         margin-left: 0 !important;
         width: 100% !important;
-        padding: 108px 16px 48px !important;
+        padding: 116px 16px 48px !important;
     }
     .macro-ticker-bar {
         margin-left: 0 !important;
@@ -1357,6 +1363,27 @@ body {
         height: auto !important;
         border-bottom: 1px solid var(--border-default) !important;
         padding: 0 !important;
+    }
+    .macro-ticker-bar.topbar-simple {
+        flex-direction: row !important;
+        align-items: center !important;
+        gap: 10px !important;
+        min-height: 60px !important;
+        padding: 8px 12px !important;
+        overflow-x: auto !important;
+    }
+    .topbar-item {
+        flex: 0 0 auto;
+    }
+    .topbar-score {
+        flex: 0 0 auto;
+        margin-left: 0 !important;
+    }
+    .market-details-toggle,
+    .market-details-collapsible {
+        left: 0;
+        width: 100%;
+        top: 108px;
     }
     .mobile-header {
         display: flex;
@@ -1581,12 +1608,23 @@ body {
 /* ============================================================
    BULL v3 — SIMPLIFIED TOP BAR
    ============================================================ */
-.topbar-simple {
+.macro-ticker-bar.topbar-simple {
     display: flex;
+    flex-direction: row;
     align-items: center;
-    gap: 24px;
-    padding: 10px 28px;
-    width: 100%;
+    gap: 18px;
+    min-height: 58px;
+    padding: 8px 28px;
+    width: calc(100% - var(--sidebar-width));
+    background: rgba(6, 10, 19, 0.96);
+    box-shadow: 0 8px 26px rgba(0, 0, 0, 0.24);
+    backdrop-filter: blur(12px);
+}
+
+@media (max-width: 1024px) and (min-width: 769px) {
+    .macro-ticker-bar.topbar-simple {
+        width: calc(100% - var(--sidebar-collapsed));
+    }
 }
 
 .topbar-item {
@@ -1594,6 +1632,7 @@ body {
     align-items: center;
     gap: 8px;
     white-space: nowrap;
+    min-width: 0;
 }
 
 .topbar-label {
@@ -1675,6 +1714,13 @@ body {
     text-align: left;
     transition: color var(--duration-fast) var(--ease-out);
     font-family: inherit;
+    position: fixed;
+    top: 58px;
+    left: var(--sidebar-width);
+    width: calc(100% - var(--sidebar-width));
+    z-index: 89;
+    background: rgba(6, 10, 19, 0.92);
+    display: none;
 }
 
 .market-details-toggle:hover {
@@ -1688,6 +1734,13 @@ body {
     gap: 32px;
     flex-wrap: wrap;
     animation: fadeSlideIn var(--duration-fast) var(--ease-out);
+    position: fixed;
+    top: 58px;
+    left: var(--sidebar-width);
+    width: calc(100% - var(--sidebar-width));
+    z-index: 88;
+    background: rgba(6, 10, 19, 0.96);
+    border-bottom: 1px solid var(--border-subtle);
 }
 
 .market-detail-item {
@@ -1761,6 +1814,18 @@ body {
     display: flex;
     align-items: center;
     gap: 10px;
+    padding: 12px 14px;
+    background: rgba(0,0,0,0.25);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-subtle);
+}
+
+.pick-level-item {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    min-height: 72px;
     padding: 12px 14px;
     background: rgba(0,0,0,0.25);
     border-radius: var(--radius-sm);

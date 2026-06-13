@@ -134,6 +134,7 @@ function showLoading(container) {
 }
 
 function showError(container, message) {
+    if (!container) return;
     container.innerHTML = `
         <div class="alert alert-danger">
             <span>⚠️</span>
@@ -197,17 +198,35 @@ function initTabs(container) {
 }
 
 // ── Market Status ──
-function updateMarketStatus() {
+function getLocalMarketStatusFallback() {
     const now = new Date();
     const hours = now.getHours();
     const minutes = now.getMinutes();
     const day = now.getDay();
     const totalMinutes = hours * 60 + minutes;
-
-    // IST: Market open 9:15 AM (555) to 3:30 PM (930), Mon-Fri
     const isWeekday = day >= 1 && day <= 5;
-    const isMarketHours = totalMinutes >= 555 && totalMinutes <= 930;
-    const isOpen = isWeekday && isMarketHours;
+    if (isWeekday && totalMinutes >= 540 && totalMinutes < 555) return 'PRE_OPEN';
+    if (isWeekday && totalMinutes >= 555 && totalMinutes <= 930) return 'OPEN';
+    return 'CLOSED';
+}
+
+async function updateMarketStatus() {
+    let status = getLocalMarketStatusFallback();
+    try {
+        const payload = await API.get('/api/market/status');
+        status = payload.status || status;
+    } catch (err) {
+        console.warn('Market status fallback used:', err.message);
+    }
+
+    const isOpen = status === 'OPEN';
+    const labelMap = {
+        OPEN: 'Market Open',
+        PRE_OPEN: 'Pre-Open',
+        CLOSED: 'Market Closed',
+        UNKNOWN: 'Status Unknown'
+    };
+    const textLabel = labelMap[status] || labelMap.UNKNOWN;
 
     document.querySelectorAll('.market-status').forEach(el => {
         const dot = el.querySelector('.status-dot');
@@ -216,9 +235,43 @@ function updateMarketStatus() {
             dot.className = `status-dot ${isOpen ? 'online' : 'offline'}`;
         }
         if (text) {
-            text.textContent = isOpen ? 'Market Open' : 'Market Closed';
+            text.textContent = textLabel;
         }
     });
+
+    const topbar = document.getElementById('topbarMarketStatus');
+    if (topbar) {
+        const dotClass = isOpen ? 'online' : 'offline';
+        topbar.innerHTML = `<span class="status-dot ${dotClass}"></span><span class="status-text">${textLabel}</span>`;
+    }
+}
+
+async function updateDataHealthTopbar() {
+    const el = document.getElementById('topbarDataHealth');
+    if (!el) return;
+    try {
+        const summary = await API.get('/api/data/health');
+        const total = Number(summary.total || 0);
+        const ok = Number(summary.ok || 0);
+        const weak = Number(summary.stale || 0) + Number(summary.missing || 0) + Number(summary.suspicious || 0);
+        const okRatio = total > 0 ? ok / total : 0;
+        if (total === 0) {
+            el.textContent = 'DATA ?';
+            el.style.color = 'var(--warning)';
+        } else if (okRatio >= 0.95) {
+            el.textContent = 'DATA OK';
+            el.style.color = 'var(--success)';
+        } else if (okRatio >= 0.8) {
+            el.textContent = `DATA ${weak} WARN`;
+            el.style.color = 'var(--warning)';
+        } else {
+            el.textContent = `DATA ${weak} BAD`;
+            el.style.color = 'var(--danger)';
+        }
+    } catch (err) {
+        el.textContent = 'DATA ERR';
+        el.style.color = 'var(--danger)';
+    }
 }
 
 // ── Initialization ──
@@ -317,6 +370,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Market status
     updateMarketStatus();
     setInterval(updateMarketStatus, 60000);
+    updateDataHealthTopbar();
+    setInterval(updateDataHealthTopbar, 300000);
 
     // Live Macro Regime Poller (Intraday High Frequency)
     async function checkMacroRegime() {
@@ -400,7 +455,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (niftyVal) {
                             const changeClass = nifty.change_percent >= 0 ? 'up' : 'down';
                             const changeSign = nifty.change_percent >= 0 ? '▲' : '▼';
-                            niftyVal.innerHTML = `₹${nifty.value.toLocaleString('en-IN', {minimumFractionDigits: 2})} <span class="macro-ticker-change ${changeClass}">${changeSign}${Math.abs(nifty.change_percent).toFixed(2)}%</span>`;
+                            niftyVal.innerHTML = `INR ${nifty.value.toLocaleString('en-IN', {minimumFractionDigits: 2})} <span class="macro-ticker-change ${changeClass}">${changeSign}${Math.abs(nifty.change_percent).toFixed(2)}%</span>`;
                             if (niftyDesc) {
                                 if (window.innerWidth <= 768) {
                                     niftyDesc.textContent = "Tap to view full metrics";
@@ -460,7 +515,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         const val = data.usd_inr;
                         const changeClass = val.change_pct >= 0 ? 'up' : 'down';
                         const changeSign = val.change_pct >= 0 ? '▲' : '▼';
-                        usdInrVal.innerHTML = `₹${val.price.toFixed(2)} <span class="macro-ticker-change ${changeClass}">${changeSign}${Math.abs(val.change_pct).toFixed(2)}%</span>`;
+                        usdInrVal.innerHTML = `INR ${val.price.toFixed(2)} <span class="macro-ticker-change ${changeClass}">${changeSign}${Math.abs(val.change_pct).toFixed(2)}%</span>`;
                         if (usdInrDesc) {
                             usdInrDesc.textContent = val.change_pct < 0 
                                 ? "Rupee strong → IT stocks may fall (they earn in dollars)" 
@@ -512,7 +567,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const elements = document.querySelectorAll(selector);
                 elements.forEach(el => {
                     const prevPrice = parseFloat(el.getAttribute('data-price') || '0');
-                    el.textContent = '₹' + price.toFixed(2);
+                    el.textContent = 'INR ' + price.toFixed(2);
                     el.setAttribute('data-price', price);
                     
                     // Gap-Up Protection: Flag trades where live price exceeds entry trigger by >1.5%

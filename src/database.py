@@ -3,8 +3,13 @@ import sqlite3
 import pandas as pd
 from datetime import datetime
 
-# Database path configuration
-DB_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data')
+# Database path configuration.
+# BULL_DATA_DIR lets hosted deployments mount a persistent disk instead of
+# losing the SQLite database on redeploy/restart. Local runs keep using ./data.
+DB_DIR = os.path.abspath(os.getenv(
+    'BULL_DATA_DIR',
+    os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data')
+))
 DB_PATH = os.path.join(DB_DIR, 'bull_research.db')
 
 def get_db_connection():

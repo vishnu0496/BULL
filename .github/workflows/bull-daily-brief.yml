@@ -1,0 +1,76 @@
+name: BULL Daily Brief
+
+on:
+  schedule:
+    # 03:15 UTC = 08:45 IST, Monday-Friday.
+    - cron: "15 3 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Print the brief without sending Telegram"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+      force_seed:
+        description: "Refresh market data even when cache exists"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+concurrency:
+  group: bull-daily-brief
+  cancel-in-progress: false
+
+jobs:
+  send-brief:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    env:
+      BULL_DATA_DIR: ${{ github.workspace }}/data
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      BULL_TOTAL_CAPITAL: ${{ vars.BULL_TOTAL_CAPITAL }}
+      BULL_MAX_RISK_PER_TRADE: ${{ vars.BULL_MAX_RISK_PER_TRADE }}
+      BULL_MAX_TRADES_PER_DAY: ${{ vars.BULL_MAX_TRADES_PER_DAY }}
+
+    steps:
+      - name: Check out BULL
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Cache BULL market database
+        uses: actions/cache@v4
+        with:
+          path: data
+          key: bull-market-data-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: |
+            bull-market-data-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-daily.txt
+
+      - name: Send daily brief
+        shell: bash
+        run: |
+          ARGS=()
+          if [[ "${{ github.event.inputs.dry_run }}" == "true" ]]; then
+            ARGS+=("--dry-run")
+          fi
+          if [[ "${{ github.event.inputs.force_seed }}" == "true" ]]; then
+            ARGS+=("--force-seed")
+          fi
+          python scripts/send_daily_brief.py "${ARGS[@]}"

@@ -7,7 +7,7 @@ from src.database import get_capital_settings, get_prices, get_watchlist_tickers
 
 
 MIN_HISTORY_ROWS = 120
-MAX_DATA_AGE_DAYS = 7
+MAX_DATA_AGE_DAYS = 4
 MIN_AVG_TURNOVER = 10_000_000
 
 _ML_MODEL = None

@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/css/styles.css?v=perf-1">
+    <link rel="stylesheet" href="/css/styles.css?v=topbar-1">
 </head>
 <body>
     <!-- Mobile Header -->
@@ -124,6 +124,10 @@
                 <span class="status-dot offline"></span>
                 <span class="status-text">Checking...</span>
             </span>
+        </div>
+        <div class="topbar-item" id="dataHealthTopbar" onclick="window.location.hash='health'" style="cursor:pointer;">
+            <span class="topbar-label">Data</span>
+            <span class="topbar-value" id="topbarDataHealth">Checking...</span>
         </div>
         <div class="topbar-score" id="topbarScoreItem" onclick="toggleScoreTooltip(event)">
             <span class="topbar-label">BULL Score</span>
@@ -264,8 +268,8 @@
 
     <!-- Scripts -->
     <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
-    <script src="/js/app.js?v=perf-2"></script>
-    <script src="/js/pages/mentor.js"></script>
+    <script src="/js/app.js?v=audit-fix-1"></script>
+    <script src="/js/pages/mentor.js?v=audit-fix-2"></script>
     <script src="/js/pages/analyst.js?v=analyst-1"></script>
     <script src="/js/pages/research.js"></script>
     <script src="/js/pages/journal.js"></script>
@@ -273,27 +277,21 @@
     <script src="/js/pages/backtest.js?v=chart-fix-1"></script>
     <script src="/js/pages/ranking.js"></script>
     <script src="/js/pages/school.js"></script>
-    <script src="/js/pages/fno.js"></script>
-    <script src="/js/pages/settings.js"></script>
-    <script src="/js/pages/health.js?v=health-fix-1"></script>
+    <script src="/js/pages/fno.js?v=audit-fix-1"></script>
+    <script src="/js/pages/settings.js?v=audit-fix-1"></script>
+    <script src="/js/pages/health.js?v=audit-fix-1"></script>
 
     <!-- Modal scripts -->
     <script>
         let fabAction = 'BUY';
         let currentClosePositionData = null;
 
-        function logTradeFromPick(ticker, price, target, stopLoss) {
+        function logTradeFromPick(ticker, price, target, stopLoss, suggestedQty) {
             document.getElementById('fabModal').classList.add('active');
             document.getElementById('fabTicker').value = cleanTicker(ticker);
             document.getElementById('fabPrice').value = price;
             
-            // Calculate quantity based on max risk (280 Rs)
-            const maxRisk = 280; // Vishnu's max risk per trade
-            const riskPerShare = Math.abs(price - stopLoss);
-            let qty = 1;
-            if (riskPerShare > 0) {
-                qty = Math.max(1, Math.floor(maxRisk / riskPerShare));
-            }
+            const qty = Math.max(1, parseInt(suggestedQty || '1', 10));
             document.getElementById('fabQty').value = qty.toString();
             document.getElementById('fabStopLoss').value = stopLoss;
             setFabAction('BUY');
@@ -419,7 +417,7 @@
                 }
                 
                 const cleanSymbol = cleanTicker(ticker);
-                showToast(`${cleanSymbol} logged at ₹${price.toFixed(2)}. Stop loss: ₹${sl.toFixed(2)}. Good luck.`, 'success');
+                showToast(`${cleanSymbol} logged at INR ${price.toFixed(2)}. Stop loss: INR ${sl.toFixed(2)}. Good luck.`, 'success');
                 
                 closeFabModal();
                 

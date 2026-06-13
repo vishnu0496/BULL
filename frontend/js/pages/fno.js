@@ -43,7 +43,9 @@ registerPage('fno', async function(container) {
         const pairs = await API.get('/api/pairs');
         renderStatArbPairs(pairs);
     } catch (err) {
-        document.getElementById('statArbPicks').innerHTML = `
+        const mount = document.getElementById('statArbPicks');
+        if (!mount) return;
+        mount.innerHTML = `
             <div class="alert alert-danger">
                 <span>⚠️</span>
                 <div><strong>Failed to load Stat Arb pairs</strong><br>${escapeHtml(err.message)}</div>
@@ -54,6 +56,7 @@ registerPage('fno', async function(container) {
 
 function renderStatArbPairs(pairs) {
     const el = document.getElementById('statArbPicks');
+    if (!el) return;
 
     if (!pairs || pairs.length === 0) {
         el.innerHTML = `

@@ -25,6 +25,8 @@ CACHE_SECONDS = 180
 _SESSION = requests.Session()
 _SESSION.headers.update(NSE_HEADERS)
 _COOKIE_TS = 0.0
+_NSE_BLOCKED_UNTIL = 0.0
+_NSE_BLOCK_SECONDS = 600
 
 
 def _now_iso() -> str:
@@ -102,10 +104,17 @@ def _prime_session(force: bool = False) -> None:
 
 def _request_json(path: str, cache_key: str, fallback: Callable[[], dict[str, Any]] | None = None) -> dict[str, Any]:
     """Fetch JSON through NSE session, retry once, cache, then fall back safely."""
+    global _NSE_BLOCKED_UNTIL
     cached = _cache_get(cache_key)
     if cached is not None:
         cached["from_cache"] = True
         return cached
+
+    if fallback and time.time() < _NSE_BLOCKED_UNTIL:
+        payload = fallback()
+        payload.setdefault("fetch_error", "NSE public endpoints recently blocked this client; using fallback feed.")
+        _cache_set(cache_key, payload)
+        return payload
 
     url = path if path.startswith("http") else f"{NSE_HOME}{path}"
     errors: list[str] = []
@@ -120,19 +129,21 @@ def _request_json(path: str, cache_key: str, fallback: Callable[[], dict[str, An
             return payload
         except Exception as exc:
             errors.append(str(exc))
+            if "403" in str(exc) or "Forbidden" in str(exc):
+                _NSE_BLOCKED_UNTIL = time.time() + _NSE_BLOCK_SECONDS
             if attempt == 0:
                 time.sleep(2)
 
-    stale = _cache_get(cache_key, allow_stale=True)
-    if stale is not None:
-        stale["from_stale_cache"] = True
-        stale["fetch_error"] = " | ".join(errors[-2:])
-        return stale
     if fallback:
         payload = fallback()
         payload.setdefault("fetch_error", " | ".join(errors[-2:]))
         _cache_set(cache_key, payload)
         return payload
+    stale = _cache_get(cache_key, allow_stale=True)
+    if stale is not None:
+        stale["from_stale_cache"] = True
+        stale["fetch_error"] = " | ".join(errors[-2:])
+        return stale
     return {"error": " | ".join(errors[-2:]), "source": "NSE unavailable"}
 
 

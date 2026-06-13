@@ -38,6 +38,6 @@ if %ERRORLEVEL% neq 0 (
 )
 
 echo [3/3] Launching BULL Research Terminal...
-.venv\Scripts\python -m uvicorn server:app --host 127.0.0.1 --port 8000 --reload
+.venv\Scripts\python -m uvicorn api.server:app --host 127.0.0.1 --port 8000 --reload
 
 pause

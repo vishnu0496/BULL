@@ -58,17 +58,19 @@ def mock_db_and_yf():
     sqlite3.Connection.close(raw_conn)
 
 def test_refresh_earnings_calendar():
+    board_meeting_date = (datetime.today() + timedelta(days=2)).strftime("%d-%b-%Y")
+    yahoo_earnings_date = datetime.today() + timedelta(days=3)
     mock_nse = [
         {
             "symbol": "RELIANCE",
             "desc": "Board meeting to consider Financial Results for the quarter",
             "purpose": "Financial Results",
-            "boardMeetingDate": "10-Jun-2026"
+            "boardMeetingDate": board_meeting_date
         }
     ]
     
     mock_stock = MagicMock()
-    mock_stock.calendar = {'Earnings Date': [datetime(2026, 6, 12)]}
+    mock_stock.calendar = {'Earnings Date': [yahoo_earnings_date]}
     # Create mock earnings_dates dataframe
     idx = pd.DatetimeIndex([datetime(2026, 3, 10)])
     mock_stock.earnings_dates = pd.DataFrame({

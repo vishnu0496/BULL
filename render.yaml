@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: bull
+    env: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m uvicorn api.server:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.0
+      - key: BULL_DATA_DIR
+        value: /opt/render/project/src/data
+      - key: BULL_ENABLE_BACKGROUND_NEWS_SWARM
+        value: "false"
+    disk:
+      name: bull-data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 1

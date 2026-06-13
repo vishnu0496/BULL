@@ -219,8 +219,10 @@ def get_data_health_summary(run_if_empty: bool = False) -> dict[str, Any]:
     rows = get_data_health_rows()
     if run_if_empty and not rows:
         rows = run_data_health_check(get_universe_tickers(limit=8), include_news=False).get("rows", [])
-    counts = Counter(str(row.get("status", "")).upper() for row in rows)
     last_check = max((row.get("checked_at") for row in rows if row.get("checked_at")), default=None)
+    if last_check:
+        rows = [row for row in rows if row.get("checked_at") == last_check]
+    counts = Counter(str(row.get("status", "")).upper() for row in rows)
     total = len(rows)
     return {
         "ok": counts.get("OK", 0),

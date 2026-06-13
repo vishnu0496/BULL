@@ -2,7 +2,7 @@
 BULL Research Dashboard — FastAPI Server
 =========================================
 Single-file API that delegates ALL business logic to the existing src/ modules.
-Run with:  uvicorn api.server:app --port 8501 --reload
+Run with:  uvicorn api.server:app --host 127.0.0.1 --port 8000 --reload
 """
 
 import asyncio
@@ -34,7 +34,7 @@ if PROJECT_ROOT not in sys.path:
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -151,7 +151,8 @@ def _nightly_sync_job():
 
 def _morning_mentor_job():
     try:
-        data = engine.get_mentor_suggestions()
+        from src.daily_brief import get_daily_picks
+        data = get_daily_picks()
         MENTOR_PICKS_CACHE["data"] = data
         MENTOR_PICKS_CACHE["timestamp"] = time.time()
     except Exception as e:
@@ -175,6 +176,20 @@ def _intraday_news_job():
                 GLOBAL_MACRO_REGIME["timestamp"] = time.time()
     except Exception as e:
         logger.error(f"Intraday news job failed: {e}")
+
+def _data_health_job():
+    try:
+        from src import data_health
+        data_health.run_data_health_check(include_news=False)
+    except Exception as e:
+        logger.error(f"Data health job failed: {e}")
+
+def _data_vault_job():
+    try:
+        from src import data_vault
+        data_vault.refresh_data_vault(limit=20, include_news=False)
+    except Exception as e:
+        logger.error(f"Data vault job failed: {e}")
 
 def _weekly_retraining_job():
     try:
@@ -207,13 +222,39 @@ def _morning_brief_job():
     except Exception as e:
         logger.error(f"Failed to run morning brief job: {e}")
 
-async def run_seed():
-    """Seed database with Nifty 50 data if empty."""
+def _latest_price_cache_age_days():
+    """Return age in days of the newest cached candle, or None when empty."""
     try:
-        from src.database import get_watchlist_tickers
-        tickers = get_watchlist_tickers()
-        if not tickers:
-            logger.info("Empty DB detected. Seeding...")
+        conn = database.get_db_connection()
+        try:
+            row = conn.execute("SELECT MAX(date) AS latest_date FROM historical_prices").fetchone()
+        finally:
+            conn.close()
+        latest_value = row["latest_date"] if row else None
+        if not latest_value:
+            return None
+        latest_day = date.fromisoformat(str(latest_value)[:10])
+        return (date.today() - latest_day).days
+    except Exception:
+        return None
+
+async def run_seed():
+    """Seed database with Nifty 50 data when the price cache is too thin."""
+    try:
+        health_info = database.get_db_health()
+        watchlist_count = int(health_info.get("watchlist_count") or 0)
+        price_count = int(health_info.get("price_count") or 0)
+        min_price_rows = max(600, watchlist_count * 60)
+        latest_age_days = _latest_price_cache_age_days()
+        is_stale = latest_age_days is None or latest_age_days > 4
+        if watchlist_count == 0 or price_count < min_price_rows or is_stale:
+            logger.info(
+                "Database needs seed data. watchlist_count=%s price_count=%s min_price_rows=%s latest_age_days=%s",
+                watchlist_count,
+                price_count,
+                min_price_rows,
+                latest_age_days,
+            )
             import sys, os
             sys.path.insert(0, os.path.dirname(
                 os.path.dirname(__file__)))
@@ -254,6 +295,8 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(_nightly_sync_job, "cron", hour=18, minute=0)
     scheduler.add_job(_morning_mentor_job, "cron", hour=8, minute=0)
     scheduler.add_job(_intraday_news_job, "interval", minutes=2)
+    scheduler.add_job(_data_health_job, "interval", minutes=30, id="data_health_job", replace_existing=True)
+    scheduler.add_job(_data_vault_job, "interval", minutes=30, id="data_vault_job", replace_existing=True)
     scheduler.add_job(_weekly_retraining_job, "cron", day_of_week="sat", hour=20, minute=0)
     scheduler.add_job(_morning_brief_job, "cron", day_of_week="mon-fri", hour=8, minute=45)
     scheduler.start()
@@ -263,7 +306,8 @@ async def lifespan(app: FastAPI):
         try:
             logger.info("Pre-warming Daily Mentor picks cache on startup...")
             async with MENTOR_PICKS_LOCK:
-                data = await _run_sync(engine.get_mentor_suggestions)
+                from src.daily_brief import get_daily_picks
+                data = await _run_sync(get_daily_picks)
                 MENTOR_PICKS_CACHE["data"] = data
                 MENTOR_PICKS_CACHE["timestamp"] = time.time()
             logger.info("Daily Mentor picks cache warmed up successfully.")
@@ -315,11 +359,13 @@ async def health():
         # Per-ticker data density
         tickers = await _run_sync(database.get_watchlist_tickers)
         density = []
+        latest_dates = []
         for t in tickers:
             df = await _run_sync(database.get_prices, t)
             latest_close = None
             if not df.empty and "close" in df.columns:
                 latest_close = float(df["close"].iloc[-1])
+                latest_dates.append(str(df["date"].max())[:10])
             density.append({
                 "ticker": t,
                 "rows": len(df),
@@ -330,7 +376,24 @@ async def health():
                 "last_close": latest_close,
             })
         health_info["ticker_density"] = density
-        health_info["seeded"] = health_info.get("watchlist_count", 0) > 0 and health_info.get("price_count", 0) > 100
+        watchlist_count = int(health_info.get("watchlist_count", 0) or 0)
+        price_count = int(health_info.get("price_count", 0) or 0)
+        min_price_rows = max(600, watchlist_count * 60)
+        latest_age_days = None
+        if latest_dates:
+            try:
+                latest_day = max(date.fromisoformat(item) for item in latest_dates if item)
+                latest_age_days = (date.today() - latest_day).days
+            except Exception:
+                latest_age_days = None
+        health_info["min_price_rows_for_scanner"] = min_price_rows
+        health_info["latest_price_age_days"] = latest_age_days
+        health_info["seeded"] = (
+            watchlist_count > 0
+            and price_count >= min_price_rows
+            and latest_age_days is not None
+            and latest_age_days <= 4
+        )
         return health_info
     except Exception as exc:
         return JSONResponse({"error": str(exc)}, status_code=500)
@@ -342,7 +405,26 @@ async def force_seed(background_tasks: BackgroundTasks):
     return {"status": "seeding_started"}
 
 
-# ---- Mentor Picks (heavy) -----------------------------------------
+# ---- Daily Brief / Mentor Picks -----------------------------------
+@app.get("/api/daily-brief")
+async def daily_brief():
+    try:
+        from src.daily_brief import build_daily_brief
+        return await _run_sync(build_daily_brief)
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+@app.post("/api/daily-brief/send")
+async def send_daily_brief():
+    try:
+        from notifier import send_morning_brief
+        sent = await _run_sync(send_morning_brief)
+        return {"success": bool(sent)}
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
 @app.get("/api/mentor/picks")
 async def mentor_picks():
     try:
@@ -351,10 +433,11 @@ async def mentor_picks():
             MENTOR_PICKS_LOCK = asyncio.Lock()
             
         async with MENTOR_PICKS_LOCK:
-            if MENTOR_PICKS_CACHE["data"] is not None and time.time() - MENTOR_PICKS_CACHE["timestamp"] < 3600:
+            if MENTOR_PICKS_CACHE["data"] is not None and time.time() - MENTOR_PICKS_CACHE["timestamp"] < 300:
                 return MENTOR_PICKS_CACHE["data"]
                 
-            picks = await _run_sync(engine.get_mentor_suggestions)
+            from src.daily_brief import get_daily_picks
+            picks = await _run_sync(get_daily_picks)
             MENTOR_PICKS_CACHE["data"] = picks
             MENTOR_PICKS_CACHE["timestamp"] = time.time()
             return picks
@@ -374,6 +457,158 @@ async def market_regime():
 @app.get("/api/market/live-regime")
 async def live_regime():
     return JSONResponse(GLOBAL_MACRO_REGIME)
+
+
+@app.get("/api/market/status")
+async def nse_market_status():
+    try:
+        from src.nse_feed import get_market_status
+        return await _run_sync(get_market_status)
+    except Exception as exc:
+        return JSONResponse({"error": str(exc), "status": "UNKNOWN", "is_open": False}, status_code=200)
+
+
+@app.get("/api/data/health")
+async def data_health_summary():
+    try:
+        from src.data_health import get_data_health_summary
+        return await _run_sync(get_data_health_summary, True)
+    except Exception as exc:
+        return JSONResponse({"error": str(exc), "ok": 0, "stale": 0, "missing": 0, "suspicious": 0, "rows": []}, status_code=200)
+
+
+@app.post("/api/data/health/check")
+async def run_data_health_check():
+    try:
+        from src.data_health import run_data_health_check
+        return await _run_sync(run_data_health_check, None, False)
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+@app.get("/api/data-vault/status")
+async def data_vault_status():
+    try:
+        from src.data_vault import get_data_vault_status
+        return await _run_sync(get_data_vault_status)
+    except Exception as exc:
+        return JSONResponse(
+            {
+                "error": str(exc),
+                "verdict": "ERROR",
+                "total_events": 0,
+                "recent_events_24h": 0,
+                "source_health": [],
+                "event_counts_24h": [],
+                "latest_events": [],
+            },
+            status_code=200,
+        )
+
+
+@app.post("/api/data-vault/refresh")
+async def run_data_vault_refresh(
+    limit: int = Query(12, ge=1, le=60),
+    include_news: bool = Query(False),
+):
+    try:
+        from src.data_vault import refresh_data_vault
+        return await _run_sync(refresh_data_vault, None, limit, include_news)
+    except Exception as exc:
+        return JSONResponse({"error": str(exc), "status": "ERROR"}, status_code=500)
+
+
+@app.get("/api/indices")
+async def live_indices():
+    try:
+        from src.nse_feed import get_indices
+        return await _run_sync(get_indices)
+    except Exception as exc:
+        return JSONResponse({"error": str(exc), "items": []}, status_code=200)
+
+
+@app.get("/api/indices/stream")
+async def stream_live_indices(request: Request):
+    import json
+    from src.nse_feed import get_indices
+
+    async def event_generator():
+        while True:
+            if await request.is_disconnected():
+                break
+            try:
+                payload = await _run_sync(get_indices)
+            except Exception as exc:
+                payload = {"error": str(exc), "items": []}
+            yield f"data: {json.dumps(payload, default=str)}\n\n"
+            await asyncio.sleep(15)
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+@app.get("/api/option-chain/{symbol}")
+async def option_chain(symbol: str = "NIFTY"):
+    try:
+        from src.nse_feed import get_option_chain
+        return await _run_sync(get_option_chain, symbol)
+    except Exception as exc:
+        return JSONResponse({"error": str(exc), "symbol": symbol.upper()}, status_code=200)
+
+
+@app.get("/api/premarket")
+async def premarket(force_refresh: bool = Query(False)):
+    try:
+        from src.premarket_signals import compute_premarket_score, get_premarket_score
+        data = await _run_sync(compute_premarket_score if force_refresh else get_premarket_score)
+        return {"status": "success", "data": data}
+    except Exception as exc:
+        return JSONResponse(
+            {
+                "status": "fallback",
+                "error": str(exc),
+                "data": {
+                    "pre_market_score": 50.0,
+                    "classification": "NEUTRAL_OPEN",
+                    "recommendation": "Premarket data unavailable. Use strict technical triggers.",
+                },
+            },
+            status_code=200,
+        )
+
+
+@app.get("/api/fii/latest")
+async def latest_fii(force_refresh: bool = Query(False)):
+    try:
+        from src.fii_tracker import fetch_fii_dii_data, get_fii_signal
+        if force_refresh:
+            await _run_sync(fetch_fii_dii_data)
+        return {"status": "success", "data": await _run_sync(get_fii_signal)}
+    except Exception as exc:
+        return JSONResponse(
+            {
+                "status": "fallback",
+                "error": str(exc),
+                "data": {
+                    "fii_net": 0.0,
+                    "dii_net": 0.0,
+                    "market_impact": "NEUTRAL",
+                    "action": "HOLD",
+                    "source": "NONE",
+                    "confidence": "LOW",
+                    "signal_text": "FII/DII data unavailable.",
+                },
+            },
+            status_code=200,
+        )
+
+
+@app.get("/api/fii/history")
+async def fii_history(days: int = Query(30, ge=1, le=120)):
+    try:
+        from src.fii_tracker import get_fii_history
+        return {"status": "success", "data": await _run_sync(get_fii_history, days)}
+    except Exception as exc:
+        return JSONResponse({"status": "fallback", "error": str(exc), "data": []}, status_code=200)
 
 # ---- Market Neutral Pairs ------------------------------------------
 @app.get("/api/pairs")
@@ -839,8 +1074,7 @@ def get_morning_status():
     # Suggestions/setups
     setup_ticker = None
     try:
-        from src.engine import get_mentor_suggestions
-        mentor_picks = get_mentor_suggestions()
+        mentor_picks = MENTOR_PICKS_CACHE.get("data") or []
         trade_setups = [s for s in mentor_picks if s.get("decision") == "TRADE"]
         if trade_setups:
             setup_ticker = trade_setups[0]["ticker"].replace(".NS", "")
@@ -974,7 +1208,7 @@ if __name__ == "__main__":
 
     uvicorn.run(
         "api.server:app",
-        host="0.0.0.0",
-        port=8501,
+        host="127.0.0.1",
+        port=8000,
         reload=True,
     )

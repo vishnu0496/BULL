@@ -72,14 +72,13 @@ def send_morning_brief():
         return False
         
     try:
-        from src.swarm import generate_morning_brief
-        message = generate_morning_brief()
+        from src.daily_brief import build_daily_brief, format_telegram_brief
+        message = format_telegram_brief(build_daily_brief())
         
         url = f"https://api.telegram.org/bot{token}/sendMessage"
         payload = {
             "chat_id": chat_id,
             "text": message,
-            "parse_mode": "Markdown"
         }
         resp = requests.post(url, json=payload, timeout=8)
         resp.raise_for_status()
