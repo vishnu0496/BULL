@@ -155,6 +155,11 @@ def _morning_mentor_job():
         data = get_daily_picks()
         MENTOR_PICKS_CACHE["data"] = data
         MENTOR_PICKS_CACHE["timestamp"] = time.time()
+        try:
+            from src import auto_paper
+            auto_paper.capture_daily_picks(picks=data, max_picks=3)
+        except Exception as auto_exc:
+            logger.warning(f"Auto paper capture failed after morning mentor job: {auto_exc}")
     except Exception as e:
         logger.error(f"Morning mentor job failed: {e}")
 
@@ -190,6 +195,14 @@ def _data_vault_job():
         data_vault.refresh_data_vault(limit=20, include_news=False)
     except Exception as e:
         logger.error(f"Data vault job failed: {e}")
+
+def _auto_paper_job():
+    try:
+        from src import auto_paper
+        picks = MENTOR_PICKS_CACHE.get("data")
+        auto_paper.run_auto_paper_cycle(picks=picks, max_picks=3, sync_prices=True)
+    except Exception as e:
+        logger.error(f"Auto paper evidence job failed: {e}")
 
 def _weekly_retraining_job():
     try:
@@ -261,6 +274,17 @@ async def run_seed():
             from scripts.data_seeder import main
             await asyncio.to_thread(main)
             logger.info("Seeding complete.")
+            try:
+                from src.daily_brief import get_daily_picks
+                from src import auto_paper
+                data = await asyncio.to_thread(get_daily_picks)
+                MENTOR_PICKS_CACHE["data"] = data
+                MENTOR_PICKS_CACHE["timestamp"] = time.time()
+                await asyncio.to_thread(auto_paper.capture_daily_picks, data, None, 3, True)
+                await asyncio.to_thread(auto_paper.evaluate_auto_paper_trades)
+                logger.info("Daily Mentor cache and auto-paper evidence refreshed after seeding.")
+            except Exception as refresh_exc:
+                logger.warning(f"Failed to refresh mentor/auto-paper after seeding: {refresh_exc}")
     except Exception as e:
         logger.error(f"Seed failed: {e}", exc_info=True)
 
@@ -297,6 +321,8 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(_intraday_news_job, "interval", minutes=2)
     scheduler.add_job(_data_health_job, "interval", minutes=30, id="data_health_job", replace_existing=True)
     scheduler.add_job(_data_vault_job, "interval", minutes=30, id="data_vault_job", replace_existing=True)
+    scheduler.add_job(_auto_paper_job, "cron", hour=8, minute=10, id="auto_paper_morning_capture", replace_existing=True)
+    scheduler.add_job(_auto_paper_job, "cron", hour=16, minute=10, id="auto_paper_after_close_eval", replace_existing=True)
     scheduler.add_job(_weekly_retraining_job, "cron", day_of_week="sat", hour=20, minute=0)
     scheduler.add_job(_morning_brief_job, "cron", day_of_week="mon-fri", hour=8, minute=45)
     scheduler.start()
@@ -310,6 +336,13 @@ async def lifespan(app: FastAPI):
                 data = await _run_sync(get_daily_picks)
                 MENTOR_PICKS_CACHE["data"] = data
                 MENTOR_PICKS_CACHE["timestamp"] = time.time()
+                try:
+                    from src import auto_paper
+                    await _run_sync(auto_paper.capture_daily_picks, data, None, 3, False)
+                    await _run_sync(auto_paper.sync_active_trade_prices)
+                    await _run_sync(auto_paper.evaluate_auto_paper_trades)
+                except Exception as auto_exc:
+                    logger.warning(f"Auto paper warmup failed: {auto_exc}")
             logger.info("Daily Mentor picks cache warmed up successfully.")
         except Exception as e:
             logger.error(f"Failed to pre-warm Daily Mentor picks: {e}")
@@ -803,6 +836,30 @@ async def get_trades():
 async def journal_analytics():
     try:
         return await _run_sync(paper_analytics.get_paper_trade_analytics)
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+@app.get("/api/auto-paper/summary")
+async def auto_paper_summary():
+    try:
+        from src import auto_paper
+        return await _run_sync(auto_paper.get_auto_paper_summary)
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+@app.post("/api/auto-paper/run")
+async def run_auto_paper():
+    try:
+        from src import auto_paper
+        picks = MENTOR_PICKS_CACHE.get("data")
+        if picks is None:
+            from src.daily_brief import get_daily_picks
+            picks = await _run_sync(get_daily_picks)
+            MENTOR_PICKS_CACHE["data"] = picks
+            MENTOR_PICKS_CACHE["timestamp"] = time.time()
+        return await _run_sync(auto_paper.run_auto_paper_cycle, picks, 3, 5, True)
     except Exception as exc:
         return JSONResponse({"error": str(exc)}, status_code=500)
 

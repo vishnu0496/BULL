@@ -9,7 +9,10 @@ registerPage('analytics', async function(container) {
                 <h1 class="page-title">My Results</h1>
                 <p class="page-subtitle" style="margin-bottom:0;">Track whether you are making progress and learning the rules.</p>
             </div>
-            <button id="refreshAnalyticsBtn" class="btn btn-secondary">Refresh Results</button>
+            <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end;">
+                <button id="runAutoPaperBtn" class="btn btn-primary">Run BULL Auto Check</button>
+                <button id="refreshAnalyticsBtn" class="btn btn-secondary">Refresh Results</button>
+            </div>
         </div>
 
         <div id="analyticsContent">
@@ -24,6 +27,22 @@ registerPage('analytics', async function(container) {
     document.getElementById('refreshAnalyticsBtn').addEventListener('click', async () => {
         await loadPaperAnalytics();
     });
+    document.getElementById('runAutoPaperBtn').addEventListener('click', async () => {
+        const btn = document.getElementById('runAutoPaperBtn');
+        btn.disabled = true;
+        btn.innerText = 'Checking...';
+        showToast('BULL is capturing picks and evaluating automatic paper evidence...', 'info');
+        try {
+            await API.post('/api/auto-paper/run');
+            await loadPaperAnalytics();
+            showToast('BULL Auto Check completed.', 'success');
+        } catch (err) {
+            showToast('BULL Auto Check failed: ' + err.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerText = 'Run BULL Auto Check';
+        }
+    });
 
     await loadPaperAnalytics();
 });
@@ -31,8 +50,15 @@ registerPage('analytics', async function(container) {
 async function loadPaperAnalytics() {
     const container = document.getElementById('analyticsContent');
     try {
-        const data = await API.get('/api/journal/analytics');
-        renderPaperAnalytics(container, data);
+        const [data, autoPaper] = await Promise.all([
+            API.get('/api/journal/analytics'),
+            API.get('/api/auto-paper/summary').catch(() => ({
+                summary: { tracked_picks: 0, closed_trades: 0, win_rate: 0, net_pnl: 0, verdict: 'ERROR' },
+                recent: [],
+                learning_summary: ['Automatic paper evidence is not available yet.']
+            }))
+        ]);
+        renderPaperAnalytics(container, data, autoPaper);
     } catch (err) {
         showError(container, err.message);
     }
@@ -49,9 +75,89 @@ function getMonthlyPnL(closedTrades) {
     return monthly;
 }
 
-function renderPaperAnalytics(container, data) {
+function renderAutoPaperEvidence(autoPaper) {
+    const summary = autoPaper.summary || {};
+    const recent = autoPaper.recent || [];
+    const lessons = autoPaper.learning_summary || [];
+    const verdict = summary.verdict || 'EMPTY';
+    const verdictClass = verdict === 'PROMISING' ? 'badge-good' : verdict === 'WEAK' ? 'badge-bad' : 'badge-wait';
+
+    return `
+        <div class="card mb-24">
+            <div class="flex justify-between items-center mb-16">
+                <div>
+                    <h3 class="section-title">BULL Auto Paper Evidence</h3>
+                    <p class="text-muted">BULL captures its own daily picks and checks later candles for entry, target, stop-loss, or expiry. You do not need to manually paper trade for this evidence.</p>
+                </div>
+                <span class="badge ${verdictClass}">${escapeHtml(verdict)}</span>
+            </div>
+            <div class="bento-grid bento-4 mb-24">
+                <div class="metric-card">
+                    <div class="metric-label">Tracked Picks</div>
+                    <div class="metric-value">${summary.tracked_picks || 0}</div>
+                    <div class="metric-note">Ideas BULL has recorded</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Closed Auto Trades</div>
+                    <div class="metric-value">${summary.closed_trades || 0}</div>
+                    <div class="metric-note">${summary.no_trigger || 0} never triggered</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Auto Win Rate</div>
+                    <div class="metric-value ${Number(summary.win_rate || 0) >= 50 ? 'success' : 'warning'}">${Number(summary.win_rate || 0).toFixed(1)}%</div>
+                    <div class="metric-note">Only closed auto trades</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Auto Net PnL</div>
+                    <div class="metric-value ${Number(summary.net_pnl || 0) >= 0 ? 'success' : 'danger'}">${formatINR(summary.net_pnl || 0)}</div>
+                    <div class="metric-note">Includes simple friction estimate</div>
+                </div>
+            </div>
+            <div class="mb-16">
+                ${lessons.map(item => `<div class="text-muted" style="margin-bottom:6px;">${escapeHtml(item)}</div>`).join('')}
+            </div>
+            <div style="overflow-x:auto;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Ticker</th>
+                            <th>Rank</th>
+                            <th>Decision</th>
+                            <th>Status</th>
+                            <th class="text-right">Entry</th>
+                            <th class="text-right">Exit</th>
+                            <th class="text-right">PnL</th>
+                            <th class="text-right">R</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${recent.length ? recent.slice(0, 10).map(row => `
+                            <tr>
+                                <td>${escapeHtml(row.pick_date || '')}</td>
+                                <td class="text-bold">${escapeHtml(cleanTicker(row.ticker || ''))}</td>
+                                <td>${row.rank || ''}</td>
+                                <td>${escapeHtml(row.decision || '')}</td>
+                                <td>${escapeHtml(row.status || '')}</td>
+                                <td class="text-right">${row.entry_price ? formatINR(row.entry_price) : formatINR(row.entry_trigger || 0)}</td>
+                                <td class="text-right">${row.exit_price ? formatINR(row.exit_price) : '-'}</td>
+                                <td class="text-right ${Number(row.pnl || 0) >= 0 ? 'positive' : 'negative'}">${formatINR(row.pnl || 0)}</td>
+                                <td class="text-right">${row.r_multiple === '' || row.r_multiple == null ? '-' : Number(row.r_multiple).toFixed(2)}</td>
+                            </tr>
+                        `).join('') : `
+                            <tr><td colspan="9" class="text-muted">No automatic evidence yet. Click Run BULL Auto Check.</td></tr>
+                        `}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+}
+
+function renderPaperAnalytics(container, data, autoPaper) {
     const summary = data.summary || {};
     const hasTrades = (summary.total_closed_trades || 0) > 0;
+    const autoPaperHtml = renderAutoPaperEvidence(autoPaper || {});
     
     // Calculate trades to unlock next level (target 20 trades)
     const tradesNeeded = Math.max(0, 20 - summary.total_closed_trades);
@@ -94,6 +200,7 @@ function renderPaperAnalytics(container, data) {
 
     if (!hasTrades) {
         container.innerHTML = `
+            ${autoPaperHtml}
             <div class="alert alert-warning" style="margin-bottom: 24px;">
                 <span>⚠️</span>
                 <div>
@@ -106,6 +213,7 @@ function renderPaperAnalytics(container, data) {
     }
 
     container.innerHTML = `
+        ${autoPaperHtml}
         <div class="results-summary-card">
             <div class="results-summary-title">My Performance Summary</div>
             <div class="results-summary-row">
