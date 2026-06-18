@@ -13,10 +13,12 @@ from contextlib import asynccontextmanager
 from datetime import date
 from typing import Optional
 import time
+from zoneinfo import ZoneInfo
 
 MENTOR_PICKS_CACHE = {"data": None, "timestamp": 0}
 MENTOR_PICKS_LOCK = None  # Initialized dynamically in lifespan
 GLOBAL_MACRO_REGIME = {"sentiment": "NEUTRAL", "timestamp": time.time(), "reason": "No shocks detected."}
+APP_TIMEZONE = ZoneInfo("Asia/Kolkata")
 
 
 def _env_truthy(name: str) -> bool:
@@ -315,7 +317,7 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("Background news swarm is disabled. Set BULL_ENABLE_BACKGROUND_NEWS_SWARM=true to enable automatic watchlist scraping.")
     
-    scheduler = BackgroundScheduler()
+    scheduler = BackgroundScheduler(timezone=APP_TIMEZONE)
     scheduler.add_job(_nightly_sync_job, "cron", hour=18, minute=0)
     scheduler.add_job(_morning_mentor_job, "cron", hour=8, minute=0)
     scheduler.add_job(_intraday_news_job, "interval", minutes=2)
