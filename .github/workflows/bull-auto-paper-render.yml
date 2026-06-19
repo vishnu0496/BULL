@@ -1,0 +1,56 @@
+name: BULL Auto Paper Render
+
+on:
+  schedule:
+    # Wake Render and capture the morning evidence snapshot inside 07:00-09:30 IST.
+    - cron: "45 1 * * 1-5"  # 07:15 IST
+    - cron: "45 2 * * 1-5"  # 08:15 IST
+    - cron: "25 3 * * 1-5"  # 08:55 IST
+    # Re-check after close so open/watching evidence gets evaluated from stored candles.
+    - cron: "45 10 * * 1-5" # 16:15 IST
+    - cron: "45 11 * * 1-5" # 17:15 IST
+  workflow_dispatch:
+
+concurrency:
+  group: bull-auto-paper-render
+  cancel-in-progress: false
+
+jobs:
+  ping-render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      BULL_RENDER_URL: ${{ vars.BULL_RENDER_URL || 'https://bull-nxlh.onrender.com' }}
+
+    steps:
+      - name: Run auto-paper cycle on Render
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="${BULL_RENDER_URL%/}"
+          echo "BULL Render URL: ${base}"
+
+          for attempt in 1 2 3 4 5 6; do
+            echo "Attempt ${attempt}: POST /api/auto-paper/run"
+            if response="$(curl --fail --show-error --silent --max-time 120 \
+              --request POST "${base}/api/auto-paper/run")"; then
+              echo "${response}"
+              echo "Auto-paper endpoint responded successfully."
+              break
+            fi
+
+            if [[ "${attempt}" == "6" ]]; then
+              echo "Auto-paper endpoint failed after ${attempt} attempts." >&2
+              exit 1
+            fi
+
+            sleep 45
+          done
+
+      - name: Print auto-paper summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="${BULL_RENDER_URL%/}"
+          curl --fail --show-error --silent --max-time 120 "${base}/api/auto-paper/summary"

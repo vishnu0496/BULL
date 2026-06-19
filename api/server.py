@@ -282,7 +282,7 @@ async def run_seed():
                 data = await asyncio.to_thread(get_daily_picks)
                 MENTOR_PICKS_CACHE["data"] = data
                 MENTOR_PICKS_CACHE["timestamp"] = time.time()
-                await asyncio.to_thread(auto_paper.capture_daily_picks, data, None, 3, True)
+                await asyncio.to_thread(auto_paper.capture_daily_picks, data, None, 3, False)
                 await asyncio.to_thread(auto_paper.evaluate_auto_paper_trades)
                 logger.info("Daily Mentor cache and auto-paper evidence refreshed after seeding.")
             except Exception as refresh_exc:
