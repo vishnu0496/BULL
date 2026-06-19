@@ -7,6 +7,7 @@ import json
 import time
 from typing import Any, Callable
 from urllib.parse import quote
+from zoneinfo import ZoneInfo
 
 import requests
 import yfinance as yf
@@ -21,6 +22,7 @@ NSE_HEADERS = {
     "Accept-Encoding": "gzip",
 }
 CACHE_SECONDS = 180
+IST = ZoneInfo("Asia/Kolkata")
 
 _SESSION = requests.Session()
 _SESSION.headers.update(NSE_HEADERS)
@@ -52,7 +54,7 @@ def ensure_cache_table() -> None:
         conn.close()
 
 
-def _cache_get(cache_key: str, allow_stale: bool = False) -> dict[str, Any] | None:
+def _cache_get(cache_key: str, allow_stale: bool = False, max_age_seconds: int = CACHE_SECONDS) -> dict[str, Any] | None:
     """Return cached payload when fresh, or stale when explicitly allowed."""
     ensure_cache_table()
     conn = database.get_db_connection()
@@ -65,7 +67,7 @@ def _cache_get(cache_key: str, allow_stale: bool = False) -> dict[str, Any] | No
         conn.close()
     if not row:
         return None
-    if not allow_stale and time.time() - float(row["fetched_at"]) > CACHE_SECONDS:
+    if not allow_stale and time.time() - float(row["fetched_at"]) > max_age_seconds:
         return None
     try:
         payload = json.loads(row["payload"])
@@ -102,10 +104,15 @@ def _prime_session(force: bool = False) -> None:
     _COOKIE_TS = time.time()
 
 
-def _request_json(path: str, cache_key: str, fallback: Callable[[], dict[str, Any]] | None = None) -> dict[str, Any]:
+def _request_json(
+    path: str,
+    cache_key: str,
+    fallback: Callable[[], dict[str, Any]] | None = None,
+    cache_seconds: int = CACHE_SECONDS,
+) -> dict[str, Any]:
     """Fetch JSON through NSE session, retry once, cache, then fall back safely."""
     global _NSE_BLOCKED_UNTIL
-    cached = _cache_get(cache_key)
+    cached = _cache_get(cache_key, max_age_seconds=cache_seconds)
     if cached is not None:
         cached["from_cache"] = True
         return cached
@@ -152,29 +159,55 @@ def _clean_symbol(symbol: str) -> str:
     return symbol.upper().replace(".NS", "").replace(".BO", "").strip()
 
 
-def _yf_quote(symbol: str) -> dict[str, Any]:
-    """Fallback quote from yFinance."""
-    yf_symbol = symbol if symbol.startswith("^") or symbol.endswith((".NS", ".BO", "=X", "=F")) else f"{symbol}.NS"
+def _flatten_yf_history(history):
+    if hasattr(history, "columns") and getattr(history.columns, "nlevels", 1) > 1:
+        history = history.copy()
+        history.columns = history.columns.droplevel(1)
+    return history
+
+
+def _yf_symbol(symbol: str) -> str:
+    return symbol if symbol.startswith("^") or symbol.endswith((".NS", ".BO", "=X", "=F")) else f"{symbol}.NS"
+
+
+def _timestamp_age_minutes(ts: Any) -> tuple[str | None, float | None]:
+    try:
+        dt = ts.to_pydatetime() if hasattr(ts, "to_pydatetime") else ts
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=IST)
+        else:
+            dt = dt.astimezone(IST)
+        age = max(0.0, (datetime.now(IST) - dt).total_seconds() / 60)
+        return dt.isoformat(timespec="seconds"), round(age, 1)
+    except Exception:
+        return None, None
+
+
+def _yf_intraday_quote(symbol: str) -> dict[str, Any] | None:
+    """Return the freshest free Yahoo 1-minute quote we can get."""
+    yf_symbol = _yf_symbol(symbol)
     try:
         history = yf.download(
             yf_symbol,
-            period="5d",
-            interval="1d",
+            period="1d",
+            interval="1m",
             progress=False,
             auto_adjust=False,
             threads=False,
             timeout=6,
         )
-        if hasattr(history, "columns") and getattr(history.columns, "nlevels", 1) > 1:
-            history = history.copy()
-            history.columns = history.columns.droplevel(1)
+        history = _flatten_yf_history(history)
         if history.empty:
-            return {"symbol": symbol, "status": "NO_DATA", "source": "yfinance", "fetched_at": _now_iso()}
+            return None
+        history = history.dropna(subset=["Close"])
+        if history.empty:
+            return None
         latest = history.iloc[-1]
-        previous = history.iloc[-2] if len(history) > 1 else latest
+        previous = history.iloc[-2] if len(history) > 1 else history.iloc[0]
         price = float(latest["Close"])
         prev_close = float(previous["Close"]) or price
         change = price - prev_close
+        bar_timestamp, quote_lag_minutes = _timestamp_age_minutes(history.index[-1])
         return {
             "symbol": symbol,
             "last_price": round(price, 2),
@@ -184,15 +217,65 @@ def _yf_quote(symbol: str) -> dict[str, Any]:
             "week_high": None,
             "week_low": None,
             "delivery_percent": None,
-            "source": "yfinance_fallback",
-            "last_update": _now_iso(),
+            "source": "yfinance_intraday_fallback",
+            "last_update": bar_timestamp or _now_iso(),
+            "bar_timestamp": bar_timestamp,
+            "quote_lag_minutes": quote_lag_minutes,
+            "quality": "FREE_INTRADAY_FALLBACK",
             "fetched_at": _now_iso(),
         }
+    except Exception:
+        return None
+
+
+def _yf_daily_quote(symbol: str) -> dict[str, Any]:
+    """Last-resort daily yFinance quote. Not acceptable for live intraday paper fills."""
+    yf_symbol = _yf_symbol(symbol)
+    history = yf.download(
+        yf_symbol,
+        period="5d",
+        interval="1d",
+        progress=False,
+        auto_adjust=False,
+        threads=False,
+        timeout=6,
+    )
+    history = _flatten_yf_history(history)
+    if history.empty:
+        return {"symbol": symbol, "status": "NO_DATA", "source": "yfinance_fallback", "fetched_at": _now_iso()}
+    latest = history.iloc[-1]
+    previous = history.iloc[-2] if len(history) > 1 else latest
+    price = float(latest["Close"])
+    prev_close = float(previous["Close"]) or price
+    change = price - prev_close
+    return {
+        "symbol": symbol,
+        "last_price": round(price, 2),
+        "change": round(change, 2),
+        "change_percent": round((change / prev_close) * 100, 2) if prev_close else 0.0,
+        "volume": int(latest.get("Volume", 0) or 0),
+        "week_high": None,
+        "week_low": None,
+        "delivery_percent": None,
+        "source": "yfinance_fallback",
+        "quality": "DAILY_DELAYED_FALLBACK",
+        "last_update": _now_iso(),
+        "fetched_at": _now_iso(),
+    }
+
+
+def _yf_quote(symbol: str) -> dict[str, Any]:
+    """Fallback quote from yFinance, preferring 1-minute bars over daily candles."""
+    try:
+        intraday = _yf_intraday_quote(symbol)
+        if intraday:
+            return intraday
+        return _yf_daily_quote(symbol)
     except Exception as exc:
         return {"symbol": symbol, "status": "NO_DATA", "error": str(exc), "source": "yfinance_fallback", "fetched_at": _now_iso()}
 
 
-def get_quote(symbol: str) -> dict[str, Any]:
+def get_quote(symbol: str, cache_seconds: int = CACHE_SECONDS) -> dict[str, Any]:
     """Return live-ish quote data for one NSE equity symbol."""
     nse_symbol = _clean_symbol(symbol)
 
@@ -203,6 +286,7 @@ def get_quote(symbol: str) -> dict[str, Any]:
         f"/api/quote-equity?symbol={quote(nse_symbol)}",
         f"quote:{nse_symbol}",
         fallback=fallback,
+        cache_seconds=cache_seconds,
     )
     if "priceInfo" not in raw:
         return raw

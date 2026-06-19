@@ -4,10 +4,17 @@ This module is intentionally boring and dependable. It uses stored daily
 candles, simple transparent indicators, and strict risk sizing. The richer ML,
 news, and backtest layers can still exist around it, but the morning product
 must be able to produce an honest answer without those optional parts.
+
+The BullAgent (Gemini-powered AI) is layered on top: the rule-based scan
+runs first to shortlist candidates, then the agent reasons over the top
+candidates and upgrades/downgrades their decisions.  If the agent is
+unavailable (no API key, rate limit, error), the original rule-based
+results pass through unchanged.
 """
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Iterable
@@ -17,6 +24,8 @@ import pandas as pd
 
 from src import backtest, database, market, news
 from src.engine import calculate_atr, calculate_rsi
+
+logger = logging.getLogger(__name__)
 
 
 MIN_SCAN_ROWS = 60
@@ -268,6 +277,21 @@ def analyze_price_frame(
 
 
 def _tickers_to_scan() -> list[str]:
+    # Try the expanded universe module first (200+ stocks)
+    try:
+        from src.universe import get_universe_tickers
+        expanded = get_universe_tickers()
+        if expanded:
+            # Merge with watchlist extras
+            index_symbols = {"^NSEI", "NIFTY", "^BSESN", "SENSEX"}
+            watchlist = [t.upper() for t in database.get_watchlist_tickers()]
+            expanded_set = set(expanded)
+            extras = [t for t in watchlist if t not in expanded_set and t not in index_symbols]
+            return expanded + extras
+    except Exception:
+        pass
+
+    # Fallback: original CORE_UNIVERSE + watchlist
     tickers = [t.upper() for t in database.get_watchlist_tickers()]
     if not tickers:
         return [item.ticker for item in CORE_UNIVERSE]
@@ -408,16 +432,147 @@ def _apply_news_overlay(results: list[dict], max_news_checks: int) -> None:
             )
 
 
+def _apply_agent_overlay(
+    results: list[dict],
+    settings: dict,
+    market_bias: str,
+    trend_score: int,
+    max_agent_calls: int = 10,
+) -> None:
+    """Send the top candidates through the BullAgent for AI reasoning.
+
+    Modifies *results* in place.  If the agent is unavailable the items
+    pass through unchanged (pure rule-based output).
+    """
+    try:
+        from src import bull_agent
+    except Exception:
+        logger.info("bull_agent module not available — skipping AI overlay")
+        return
+
+    candidates = [
+        item for item in results
+        if item.get("decision") != "REJECT" and item.get("last_close", 0) > 0
+    ][:max_agent_calls]
+
+    if not candidates:
+        return
+
+    for item in candidates:
+        ticker = item.get("ticker", "")
+        try:
+            df = database.get_prices(ticker)
+        except Exception:
+            continue
+
+        if df is None or df.empty:
+            continue
+
+        # Gather news for the agent
+        news_items: list[dict] = []
+        try:
+            news_items = news.fetch_stock_news(ticker, force_refresh=False)
+        except Exception:
+            pass
+
+        # Gather backtest verdict
+        bt_result: dict = {}
+        try:
+            bt_result = backtest.get_stock_verdict(ticker)
+        except Exception:
+            pass
+
+        context = bull_agent.build_agent_context(
+            ticker=ticker,
+            df=df,
+            settings=settings,
+            market_bias=market_bias,
+            trend_score=trend_score,
+            news_items=news_items,
+            backtest_result=bt_result,
+            sector_return_20d=item.get("sector_return_20d"),
+            sector_rank=item.get("sector_rank"),
+            company_name=item.get("company_name"),
+            sector=item.get("sector"),
+        )
+
+        agent_result = bull_agent.analyze_stock(context)
+        if agent_result is None:
+            # Agent unavailable — keep rule-based result as-is
+            continue
+
+        # ---- Merge agent output into the existing pick dict ----
+        old_decision = item.get("decision", "REJECT")
+
+        # Safety filter: if rule-based engine had hard blocks but agent
+        # says TRADE, downgrade to WAIT and note the override.
+        agent_decision = str(agent_result.get("decision", "WAIT")).upper()
+        if agent_decision == "TRADE" and old_decision in ("REJECT", "WAIT"):
+            # Check if there were hard blocks in the reasons
+            old_reasons = item.get("reasons", [])
+            has_hard_block = any("Blocked:" in r for r in old_reasons)
+            if has_hard_block:
+                agent_decision = "WAIT"
+                agent_result.setdefault("reasons", []).append(
+                    "AI agent wanted TRADE but rule-based safety filter has hard blocks — downgraded to WAIT."
+                )
+
+        # Overwrite decision and scores with agent output
+        item["decision"] = agent_decision
+        item["confidence_score"] = int(agent_result.get("confidence_score", item.get("confidence_score", 0)))
+        item["direction"] = agent_result.get("direction", item.get("direction", "NEUTRAL"))
+        item["setup_type"] = agent_result.get("setup_type", item.get("setup_type", "WATCH_ONLY"))
+
+        # Use agent's levels if they look valid
+        agent_entry = float(agent_result.get("entry_trigger", 0))
+        agent_stop = float(agent_result.get("stop_loss", 0))
+        agent_t1 = float(agent_result.get("target_1", 0))
+        agent_t2 = float(agent_result.get("target_2", 0))
+        if agent_entry > 0 and agent_stop > 0 and agent_t1 > agent_entry and agent_stop < agent_entry:
+            item["entry_trigger"] = _round_price(agent_entry)
+            item["stop_loss"] = _round_price(agent_stop)
+            item["target_1"] = _round_price(agent_t1)
+            if agent_t2 > agent_t1:
+                item["target_2"] = _round_price(agent_t2)
+            risk_per_share = _round_price(agent_entry - agent_stop)
+            item["risk_per_share"] = risk_per_share
+            max_risk = float(settings.get("max_risk_per_trade") or 100.0)
+            item["suggested_quantity"] = int(max_risk // risk_per_share) if risk_per_share > 0 else 0
+            item["max_loss"] = _round_price(item["suggested_quantity"] * risk_per_share)
+
+        # Merge reasoning
+        agent_reasons = agent_result.get("reasons", [])
+        agent_risks = agent_result.get("risks", [])
+        agent_reasoning = agent_result.get("agent_reasoning", "")
+
+        if agent_reasons:
+            item["reasons"] = agent_reasons
+        if agent_risks:
+            item["risks"] = agent_risks
+        if agent_reasoning:
+            item["agent_reasoning"] = agent_reasoning
+
+        item["agent_source"] = agent_result.get("model", "gemini")
+
+        logger.info(
+            "Agent analyzed %s: %s (confidence %s)",
+            ticker, agent_decision, item["confidence_score"],
+        )
+
+
 def scan_daily_setups(tickers: Iterable[str] | None = None, max_items: int = 8) -> list[dict]:
     """Scan stored candles and return ranked daily setups."""
     database.init_db()
     settings = database.get_capital_settings()
+    trend_score = 50
     try:
         regime = market.get_market_regime()
         market_bias = str(regime.get("market_bias", "NEUTRAL")).upper()
+        trend_score = int(regime.get("trend_score", 50))
     except Exception:
         market_bias = "NEUTRAL"
 
+    # ---- Pass 1: rule-based scan (fast, no API calls) ----
     results = []
     for ticker in tickers or _tickers_to_scan():
         try:
@@ -429,6 +584,7 @@ def scan_daily_setups(tickers: Iterable[str] | None = None, max_items: int = 8) 
     _apply_sector_overlay(results)
     _apply_historical_overlay(results)
 
+    # Sort so best candidates bubble to the top before agent overlay
     results.sort(
         key=lambda item: (
             _decision_priority(item.get("decision", "REJECT")),
@@ -437,7 +593,14 @@ def scan_daily_setups(tickers: Iterable[str] | None = None, max_items: int = 8) 
             item.get("ticker", ""),
         )
     )
+
+    # ---- Pass 2: AI agent reasoning on top candidates ----
+    _apply_agent_overlay(results, settings, market_bias, trend_score)
+
+    # ---- Pass 3: news filter (runs on top of agent output) ----
     _apply_news_overlay(results, max(max_items, 8))
+
+    # Final sort
     results.sort(
         key=lambda item: (
             _decision_priority(item.get("decision", "REJECT")),

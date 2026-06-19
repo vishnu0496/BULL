@@ -6,6 +6,10 @@ on:
     - cron: "45 1 * * 1-5"  # 07:15 IST
     - cron: "45 2 * * 1-5"  # 08:15 IST
     - cron: "25 3 * * 1-5"  # 08:55 IST
+    # Best-effort intraday live-paper checks. GitHub cron is not exact.
+    - cron: "45,55 3 * * 1-5" # 09:15, 09:25 IST
+    - cron: "*/10 4-9 * * 1-5" # 09:30-14:30 IST
+    - cron: "0 10 * * 1-5" # 15:30 IST
     # Re-check after close so open/watching evidence gets evaluated from stored candles.
     - cron: "45 10 * * 1-5" # 16:15 IST
     - cron: "45 11 * * 1-5" # 17:15 IST
@@ -46,6 +50,29 @@ jobs:
             fi
 
             sleep 45
+          done
+
+      - name: Run intraday auto-paper check on Render
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="${BULL_RENDER_URL%/}"
+
+          for attempt in 1 2 3; do
+            echo "Attempt ${attempt}: POST /api/auto-paper/intraday/run"
+            if response="$(curl --fail --show-error --silent --max-time 120 \
+              --request POST "${base}/api/auto-paper/intraday/run")"; then
+              echo "${response}"
+              echo "Intraday auto-paper endpoint responded successfully."
+              break
+            fi
+
+            if [[ "${attempt}" == "3" ]]; then
+              echo "Intraday auto-paper endpoint failed after ${attempt} attempts." >&2
+              exit 1
+            fi
+
+            sleep 30
           done
 
       - name: Print auto-paper summary

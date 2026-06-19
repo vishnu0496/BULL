@@ -11,6 +11,7 @@ registerPage('analytics', async function(container) {
             </div>
             <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end;">
                 <button id="runAutoPaperBtn" class="btn btn-primary">Run BULL Auto Check</button>
+                <button id="runIntradayPaperBtn" class="btn btn-secondary">Run Intraday Tick</button>
                 <button id="refreshAnalyticsBtn" class="btn btn-secondary">Refresh Results</button>
             </div>
         </div>
@@ -43,6 +44,22 @@ registerPage('analytics', async function(container) {
             btn.innerText = 'Run BULL Auto Check';
         }
     });
+    document.getElementById('runIntradayPaperBtn').addEventListener('click', async () => {
+        const btn = document.getElementById('runIntradayPaperBtn');
+        btn.disabled = true;
+        btn.innerText = 'Watching...';
+        showToast('BULL is checking live NSE quotes for entry/exit triggers...', 'info');
+        try {
+            await API.post('/api/auto-paper/intraday/run');
+            await loadPaperAnalytics();
+            showToast('Intraday paper tick completed.', 'success');
+        } catch (err) {
+            showToast('Intraday paper tick failed: ' + err.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerText = 'Run Intraday Tick';
+        }
+    });
 
     await loadPaperAnalytics();
 });
@@ -50,15 +67,20 @@ registerPage('analytics', async function(container) {
 async function loadPaperAnalytics() {
     const container = document.getElementById('analyticsContent');
     try {
-        const [data, autoPaper] = await Promise.all([
+        const [data, autoPaper, intradayPaper] = await Promise.all([
             API.get('/api/journal/analytics'),
             API.get('/api/auto-paper/summary').catch(() => ({
                 summary: { tracked_picks: 0, closed_trades: 0, win_rate: 0, net_pnl: 0, verdict: 'ERROR' },
                 recent: [],
                 learning_summary: ['Automatic paper evidence is not available yet.']
+            })),
+            API.get('/api/auto-paper/intraday/status').catch(() => ({
+                market_open: false,
+                active_trades: 0,
+                recent_ticks: []
             }))
         ]);
-        renderPaperAnalytics(container, data, autoPaper);
+        renderPaperAnalytics(container, data, autoPaper, intradayPaper);
     } catch (err) {
         showError(container, err.message);
     }
@@ -75,12 +97,17 @@ function getMonthlyPnL(closedTrades) {
     return monthly;
 }
 
-function renderAutoPaperEvidence(autoPaper) {
+function renderAutoPaperEvidence(autoPaper, intradayPaper) {
     const summary = autoPaper.summary || {};
     const recent = autoPaper.recent || [];
     const lessons = autoPaper.learning_summary || [];
     const verdict = summary.verdict || 'EMPTY';
     const verdictClass = verdict === 'PROMISING' ? 'badge-good' : verdict === 'WEAK' ? 'badge-bad' : 'badge-wait';
+    const recentTicks = (intradayPaper && intradayPaper.recent_ticks) || [];
+    const marketOpen = Boolean(intradayPaper && intradayPaper.market_open);
+    const activeTrades = Number((intradayPaper && intradayPaper.active_trades) || 0);
+    const tickBadgeClass = marketOpen ? 'badge-good' : 'badge-wait';
+    const tickBadgeText = marketOpen ? 'LIVE LOOP READY' : 'MARKET CLOSED';
 
     return `
         <div class="card mb-24">
@@ -115,6 +142,57 @@ function renderAutoPaperEvidence(autoPaper) {
             </div>
             <div class="mb-16">
                 ${lessons.map(item => `<div class="text-muted" style="margin-bottom:6px;">${escapeHtml(item)}</div>`).join('')}
+            </div>
+            <div class="mb-24" style="border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:16px; background:rgba(255,255,255,0.02);">
+                <div class="flex justify-between items-center mb-12">
+                    <div>
+                        <h4 style="margin:0 0 4px; font-size:1rem;">Intraday Trigger Watcher</h4>
+                        <p class="text-muted" style="margin:0;">Watches today's auto-paper picks against NSE public quotes first. If NSE blocks the request, it can use fresh Yahoo 1-minute bars for paper evidence, but it still rejects old daily fallback data.</p>
+                    </div>
+                    <span class="badge ${tickBadgeClass}">${tickBadgeText}</span>
+                </div>
+                <div class="bento-grid bento-3 mb-16">
+                    <div>
+                        <div class="metric-label">Active Watch/Open</div>
+                        <div class="metric-value" style="font-size:1.4rem;">${activeTrades}</div>
+                    </div>
+                    <div>
+                        <div class="metric-label">Last Tick Action</div>
+                        <div class="metric-value" style="font-size:1.1rem;">${recentTicks.length ? escapeHtml(recentTicks[0].action || '-') : '-'}</div>
+                    </div>
+                    <div>
+                        <div class="metric-label">Source Rule</div>
+                        <div class="metric-value" style="font-size:1.1rem;">NSE + fresh 1m</div>
+                    </div>
+                </div>
+                <div style="overflow-x:auto;">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Observed</th>
+                                <th>Ticker</th>
+                                <th>Action</th>
+                                <th class="text-right">Price</th>
+                                <th>Source</th>
+                                <th>Note</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${recentTicks.length ? recentTicks.slice(0, 8).map(row => `
+                                <tr>
+                                    <td>${escapeHtml(row.observed_at || '')}</td>
+                                    <td class="text-bold">${escapeHtml(cleanTicker(row.ticker || ''))}</td>
+                                    <td>${escapeHtml(row.action || '')}</td>
+                                    <td class="text-right">${row.price ? formatINR(row.price) : '-'}</td>
+                                    <td>${escapeHtml(row.source || '')}</td>
+                                    <td>${escapeHtml(row.note || '')}</td>
+                                </tr>
+                            `).join('') : `
+                                <tr><td colspan="6" class="text-muted">No intraday quote observations yet. During market hours, the server worker checks every minute while the app is awake.</td></tr>
+                            `}
+                        </tbody>
+                    </table>
+                </div>
             </div>
             <div style="overflow-x:auto;">
                 <table class="data-table">
@@ -154,10 +232,10 @@ function renderAutoPaperEvidence(autoPaper) {
     `;
 }
 
-function renderPaperAnalytics(container, data, autoPaper) {
+function renderPaperAnalytics(container, data, autoPaper, intradayPaper) {
     const summary = data.summary || {};
     const hasTrades = (summary.total_closed_trades || 0) > 0;
-    const autoPaperHtml = renderAutoPaperEvidence(autoPaper || {});
+    const autoPaperHtml = renderAutoPaperEvidence(autoPaper || {}, intradayPaper || {});
     
     // Calculate trades to unlock next level (target 20 trades)
     const tradesNeeded = Math.max(0, 20 - summary.total_closed_trades);

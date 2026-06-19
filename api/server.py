@@ -206,6 +206,42 @@ def _auto_paper_job():
     except Exception as e:
         logger.error(f"Auto paper evidence job failed: {e}")
 
+def _intraday_auto_paper_job():
+    try:
+        from src import intraday_paper
+        result = intraday_paper.run_intraday_paper_once()
+        if result.get("updated"):
+            logger.info(f"Intraday auto-paper update: {result}")
+    except Exception as e:
+        logger.error(f"Intraday auto-paper job failed: {e}")
+
+def _live_scanner_job():
+    """Run one cycle of the live market scanner during market hours."""
+    try:
+        from src import live_scanner, universe
+        if not live_scanner.is_market_hours():
+            return
+        tickers = universe.get_universe_tickers()
+        picks = live_scanner.run_scan_cycle(tickers)
+        if picks:
+            logger.info(f"Live scanner found {len(picks)} new pick(s)")
+    except ImportError:
+        pass  # Modules not built yet
+    except Exception as e:
+        logger.error(f"Live scanner job failed: {e}")
+
+def _track_record_eval_job():
+    """Evaluate pending AI picks against current prices."""
+    try:
+        from src import track_record
+        result = track_record.evaluate_picks()
+        if result.get("updated", 0) > 0:
+            logger.info(f"Track record evaluation: {result}")
+    except ImportError:
+        pass  # Module not built yet
+    except Exception as e:
+        logger.error(f"Track record eval job failed: {e}")
+
 def _weekly_retraining_job():
     try:
         from src import ml_model, deep_learning
@@ -325,8 +361,11 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(_data_vault_job, "interval", minutes=30, id="data_vault_job", replace_existing=True)
     scheduler.add_job(_auto_paper_job, "cron", hour=8, minute=10, id="auto_paper_morning_capture", replace_existing=True)
     scheduler.add_job(_auto_paper_job, "cron", hour=16, minute=10, id="auto_paper_after_close_eval", replace_existing=True)
+    scheduler.add_job(_intraday_auto_paper_job, "interval", seconds=60, id="intraday_auto_paper", replace_existing=True)
     scheduler.add_job(_weekly_retraining_job, "cron", day_of_week="sat", hour=20, minute=0)
     scheduler.add_job(_morning_brief_job, "cron", day_of_week="mon-fri", hour=8, minute=45)
+    scheduler.add_job(_live_scanner_job, "interval", seconds=120, id="live_scanner", replace_existing=True)
+    scheduler.add_job(_track_record_eval_job, "cron", hour=16, minute=30, id="track_record_eval", replace_existing=True)
     scheduler.start()
     
     # Warm the mentor picks cache in the background on startup
@@ -862,6 +901,79 @@ async def run_auto_paper():
             MENTOR_PICKS_CACHE["data"] = picks
             MENTOR_PICKS_CACHE["timestamp"] = time.time()
         return await _run_sync(auto_paper.run_auto_paper_cycle, picks, 3, 5, True)
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+@app.post("/api/auto-paper/intraday/run")
+async def run_intraday_auto_paper(force: bool = Query(False)):
+    try:
+        from src import intraday_paper
+        return await _run_sync(intraday_paper.run_intraday_paper_once, force)
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+@app.get("/api/auto-paper/intraday/status")
+async def intraday_auto_paper_status():
+    try:
+        from src import intraday_paper
+        return await _run_sync(intraday_paper.get_intraday_paper_status)
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+# ---- Live Scanner & Track Record -----------------------------------------
+
+@app.get("/api/scanner/status")
+async def live_scanner_status():
+    try:
+        from src import live_scanner
+        return await _run_sync(live_scanner.get_scanner_status)
+    except Exception as exc:
+        return JSONResponse({"error": str(exc), "status": "NOT_AVAILABLE"}, status_code=200)
+
+
+@app.post("/api/scanner/run")
+async def run_scanner_cycle():
+    try:
+        from src import live_scanner, universe
+        tickers = universe.get_universe_tickers()
+        result = await _run_sync(live_scanner.run_scan_cycle, tickers)
+        return {"status": "OK", "picks": result}
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+@app.get("/api/track-record")
+async def get_track_record():
+    try:
+        from src import track_record
+        summary = await _run_sync(track_record.get_track_record_summary)
+        recent = await _run_sync(track_record.get_recent_picks, 30)
+        return {"summary": summary, "recent": recent}
+    except Exception as exc:
+        return JSONResponse({"error": str(exc), "summary": {}, "recent": []}, status_code=200)
+
+
+@app.get("/api/track-record/recent")
+async def get_recent_track_record(limit: int = Query(20)):
+    try:
+        from src import track_record
+        return await _run_sync(track_record.get_recent_picks, limit)
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+@app.get("/api/universe")
+async def get_stock_universe():
+    try:
+        from src import universe
+        stocks = universe.get_scan_universe()
+        return {
+            "total": len(stocks),
+            "stocks": stocks,
+        }
     except Exception as exc:
         return JSONResponse({"error": str(exc)}, status_code=500)
 
