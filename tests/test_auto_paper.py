@@ -131,6 +131,23 @@ def test_open_trade_does_not_time_exit_before_horizon(temp_db):
     assert row["exit_date"] == ""
 
 
+def test_same_day_candle_can_open_premarket_pick(temp_db):
+    auto_paper.capture_daily_picks([_pick()], pick_date="2026-06-10")
+    _save_prices(
+        "TEST.NS",
+        [
+            {"Date": "2026-06-10", "Open": 99, "High": 105, "Low": 98, "Close": 104, "Volume": 1000},
+        ],
+    )
+
+    auto_paper.evaluate_auto_paper_trades(as_of_date="2026-06-10", horizon_days=5)
+    row = auto_paper.get_auto_paper_summary()["recent"][0]
+
+    assert row["status"] == "OPEN"
+    assert row["entry_date"] == "2026-06-10"
+    assert row["entry_price"] == 100
+
+
 def test_no_trigger_after_horizon(temp_db):
     auto_paper.capture_daily_picks([_pick()], pick_date="2026-06-10")
     _save_prices(

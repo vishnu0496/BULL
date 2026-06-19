@@ -370,7 +370,9 @@ def evaluate_auto_paper_trades(as_of_date: str | None = None, horizon_days: int 
         prices = _clean_prices(database.get_prices(trade["ticker"]))
         if prices.empty:
             continue
-        prices = prices[prices["date"] > pick_day]
+        # Picks are captured before the market opens for pick_day, so that same
+        # day's candle is the first valid evidence candle.
+        prices = prices[prices["date"] >= pick_day]
         if as_of is not None:
             prices = prices[prices["date"] <= as_of]
         if prices.empty:
